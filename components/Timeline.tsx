@@ -17,6 +17,7 @@ export type TimelineStep = {
   enrollment_id: string;
   stage_name: string;
   stage_sort: number;
+  step_sort: number;
   step_name: string;
   owner_role: string;
   due_date: string;
@@ -48,7 +49,7 @@ const KIND_LABEL: Record<Marker['kind'], string> = {
 // One marker per stage: where it finished, or when its next unfinished step is due.
 function markersFor(steps: TimelineStep[], today: string): Marker[] {
   const byStage = new Map<number, TimelineStep[]>();
-  for (const s of steps) byStage.set(s.stage_sort, [...(byStage.get(s.stage_sort) ?? []), s]);
+  for (const s of [...steps].sort((a, b) => a.step_sort - b.step_sort)) byStage.set(s.stage_sort, [...(byStage.get(s.stage_sort) ?? []), s]);
 
   return [...byStage.values()].map((stageSteps) => {
     const open = stageSteps.filter((s) => s.status === 'not_started' || s.status === 'in_progress');
@@ -142,7 +143,7 @@ export function Timeline({
             </div>
           </div>
 
-          {rows.map((e) => {
+          {rows.map((e, rowIndex) => {
             const markers = markersFor(stepsBy.get(e.enrollment_id) ?? [], today);
             const later = markers.filter((m) => m.date >= end).length;
             const barStart = e.start_date;
@@ -178,14 +179,38 @@ export function Timeline({
                   <span className="absolute inset-y-0 w-0.5 bg-brand/60" style={{ left: `${pos(today)}%` }} />
                   {markers
                     .filter((m) => m.date >= start && m.date < end)
-                    .map((m) => (
-                      <span
-                        key={m.stage}
-                        title={`${m.stage} (${KIND_LABEL[m.kind]})\n${m.steps.join('\n')}`}
-                        className={`absolute top-1/2 block h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-white ${KIND_STYLE[m.kind]}`}
-                        style={{ left: `${pos(m.date)}%` }}
-                      />
-                    ))}
+                    .map((m) => {
+                      const x = pos(m.date);
+                      const below = rowIndex < rows.length / 2;
+                      return (
+                        <span
+                          key={m.stage}
+                          className="group absolute top-1/2 -translate-x-1/2 -translate-y-1/2 hover:z-30 focus-within:z-30"
+                          style={{ left: `${x}%` }}
+                        >
+                          <button
+                            type="button"
+                            aria-label={`${m.stage}: ${KIND_LABEL[m.kind]}`}
+                            className={`block h-3.5 w-3.5 cursor-pointer rounded-full ring-2 ring-white outline-none focus:ring-ink ${KIND_STYLE[m.kind]}`}
+                          />
+                          <span
+                            role="tooltip"
+                            className={`pointer-events-none absolute z-30 hidden w-64 rounded border border-line bg-white p-2.5 text-left text-xs shadow-lg group-hover:block group-focus-within:block ${
+                              below ? 'top-5' : 'bottom-5'
+                            } ${x > 70 ? 'right-0' : x < 30 ? 'left-0' : 'left-1/2 -translate-x-1/2'}`}
+                          >
+                            <span className="mb-1 flex items-center gap-1.5 font-medium text-ink">
+                              <span className={`inline-block h-2 w-2 rounded-full ${KIND_STYLE[m.kind]}`} />
+                              {m.stage}
+                            </span>
+                            <span className="mb-1.5 block text-muted">{KIND_LABEL[m.kind]} · {weekdayDate(m.date)}</span>
+                            {m.steps.map((s) => (
+                              <span key={s} className="block leading-5 text-ink">{s}</span>
+                            ))}
+                          </span>
+                        </span>
+                      );
+                    })}
                   {later > 0 && (
                     <span className="absolute right-1 top-1 text-[11px] text-muted">+{later} later</span>
                   )}
@@ -206,7 +231,7 @@ export function Timeline({
         <span className="flex items-center gap-1.5">
           <span className="inline-block h-3 w-0.5 bg-brand/60" /> Today
         </span>
-        <span>Hover a dot to see each step.</span>
+        <span>Hover or click a dot to see each step.</span>
       </div>
     </>
   );

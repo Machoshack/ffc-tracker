@@ -5,9 +5,9 @@ import { todayInNewYork } from '@/lib/dates';
 
 const PROGRAMS = [
   { code: '', label: 'All' },
+  { code: 'TS', label: 'Two-Step' },
   { code: 'FHE', label: 'FHE' },
   { code: 'P1', label: 'Protocol I' },
-  { code: 'TS', label: 'Two-Step' },
   { code: 'P2', label: 'Protocol II' },
 ];
 
@@ -30,7 +30,7 @@ export default async function TimelinePage({
   const { data: steps } = ids.length
     ? await supabase
         .from('v_steps')
-        .select('enrollment_id, stage_name, stage_sort, step_name, owner_role, due_date, status, completed_on, is_blocked')
+        .select('enrollment_id, stage_name, stage_sort, step_sort, step_name, owner_role, due_date, status, completed_on, is_blocked')
         .in('enrollment_id', ids)
     : { data: [] };
 
