@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { addDays, daysBetween, mondayOf, shortDate, weekdayDate } from '@/lib/dates';
+import { addDays, daysBetween, mondayOf, shortDate, toDate, weekdayDate } from '@/lib/dates';
 
 export type TimelineEnrollment = {
   enrollment_id: string;
@@ -13,6 +13,7 @@ export type TimelineEnrollment = {
   overdue_steps: number;
   next_due: string | null;
   planned_end: string | null;
+  status?: string;
 };
 
 export type TimelineStep = {
@@ -76,24 +77,45 @@ function markersFor(steps: TimelineStep[], today: string): Marker[] {
   });
 }
 
+// Grid lines and labels: weekly for short windows, every other week for medium, monthly for long ones.
+function ticksFor(start: string, end: string): string[] {
+  const span = daysBetween(start, end);
+  const out: string[] = [];
+  if (span <= 110) {
+    for (let d = mondayOf(start) < start ? addDays(mondayOf(start), 7) : mondayOf(start); d < end; d = addDays(d, 7)) out.push(d);
+  } else if (span <= 200) {
+    for (let d = mondayOf(start) < start ? addDays(mondayOf(start), 7) : mondayOf(start); d < end; d = addDays(d, 14)) out.push(d);
+  } else {
+    const first = new Date(`${start.slice(0, 7)}-01T00:00:00Z`);
+    if (first.toISOString().slice(0, 10) < start) first.setUTCMonth(first.getUTCMonth() + 1);
+    for (const d = first; d.toISOString().slice(0, 10) < end; d.setUTCMonth(d.getUTCMonth() + 1)) out.push(d.toISOString().slice(0, 10));
+  }
+  return out;
+}
+
+function tickLabel(d: string, span: number) {
+  return span > 200
+    ? toDate(d).toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' }) + (d.slice(5, 7) === '01' ? ` ${d.slice(0, 4)}` : '')
+    : shortDate(d);
+}
+
 export function Timeline({
   enrollments,
   steps,
   today,
-  weeksBack = 3,
-  weeksAhead = 11,
+  start,
+  end,
 }: {
   enrollments: TimelineEnrollment[];
   steps: TimelineStep[];
   today: string;
-  weeksBack?: number;
-  weeksAhead?: number;
+  start: string;
+  end: string; // first day after the window
 }) {
-  const start = addDays(mondayOf(today), -7 * weeksBack);
-  const end = addDays(mondayOf(today), 7 * (weeksAhead + 1));
   const span = daysBetween(start, end);
   const pos = (d: string) => (Math.min(Math.max(daysBetween(start, d), 0), span) / span) * 100;
-  const weeks = Array.from({ length: weeksBack + weeksAhead + 1 }, (_, i) => addDays(start, i * 7));
+  const weeks = ticksFor(start, end);
+  const todayVisible = today >= start && today < end;
 
   const stepsBy = new Map<string, TimelineStep[]>();
   for (const s of steps) stepsBy.set(s.enrollment_id, [...(stepsBy.get(s.enrollment_id) ?? []), s]);
@@ -103,7 +125,7 @@ export function Timeline({
   );
 
   if (rows.length === 0) {
-    return <p className="rounded border border-line bg-white p-6 text-muted">No active patients.</p>;
+    return <p className="rounded border border-line bg-white p-6 text-muted">No patients to show for this view.</p>;
   }
 
   return (
@@ -116,7 +138,7 @@ export function Timeline({
               <Link href={`/patients/${e.patient_id}`} className="font-medium text-brand underline-offset-2 hover:underline">{e.display_name}</Link>
               <span className="text-xs text-muted">{e.program_code}</span>
             </div>
-            <div className="mt-1 text-sm text-muted">{e.current_stage ?? 'All steps done'}</div>
+            <div className="mt-1 text-sm text-muted">{e.current_stage ?? (e.status === 'converted' ? 'Upgraded' : 'Finished')}</div>
             <div className="mt-2 flex items-center gap-2 text-sm">
               {e.overdue_steps > 0 && (
                 <span className="rounded bg-late px-2 py-0.5 text-xs font-medium text-white">
@@ -139,7 +161,7 @@ export function Timeline({
             <div className="relative h-8">
               {weeks.map((w) => (
                 <span key={w} className="absolute top-2 -translate-x-1/2" style={{ left: `${pos(w)}%` }}>
-                  {shortDate(w)}
+                  {tickLabel(w, span)}
                 </span>
               ))}
             </div>
@@ -148,6 +170,7 @@ export function Timeline({
           {rows.map((e, rowIndex) => {
             const markers = markersFor(stepsBy.get(e.enrollment_id) ?? [], today);
             const later = markers.filter((m) => m.date >= end).length;
+            const earlier = markers.filter((m) => m.date < start).length;
             const barStart = e.start_date;
             const barEnd = e.planned_end ?? e.start_date;
             return (
@@ -158,7 +181,7 @@ export function Timeline({
                     <span className="text-xs text-muted">{e.program_code}</span>
                   </div>
                   <div className="flex min-w-0 items-center gap-2 text-xs text-muted">
-                    <span className="min-w-0 truncate">{e.current_stage ?? 'All steps done'}</span>
+                    <span className="min-w-0 truncate">{e.current_stage ?? (e.status === 'converted' ? 'Upgraded' : 'Finished')}</span>
                     {e.days_in_stage != null && e.current_stage && (
                       <span className="shrink-0 whitespace-nowrap" title="Days in this stage">· {e.days_in_stage}d</span>
                     )}
@@ -178,7 +201,7 @@ export function Timeline({
                     className="absolute top-1/2 h-1 -translate-y-1/2 rounded bg-line"
                     style={{ left: `${pos(barStart)}%`, width: `${Math.max(pos(barEnd) - pos(barStart), 0.5)}%` }}
                   />
-                  <span className="absolute inset-y-0 w-0.5 bg-brand/60" style={{ left: `${pos(today)}%` }} />
+                  {todayVisible && <span className="absolute inset-y-0 w-0.5 bg-brand/60" style={{ left: `${pos(today)}%` }} />}
                   {markers
                     .filter((m) => m.date >= start && m.date < end)
                     .map((m) => {
@@ -213,6 +236,9 @@ export function Timeline({
                         </span>
                       );
                     })}
+                  {earlier > 0 && (
+                    <span className="absolute left-1 top-1 text-[11px] text-muted">{earlier} earlier</span>
+                  )}
                   {later > 0 && (
                     <span className="absolute right-1 top-1 text-[11px] text-muted">+{later} later</span>
                   )}

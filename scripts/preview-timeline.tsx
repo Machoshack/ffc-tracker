@@ -5,8 +5,9 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Timeline } from '../components/Timeline';
 import { todayInNewYork } from '../lib/dates';
+import { resolveWindow } from '../lib/timelineWindow';
 
-const [cssFile, outFile] = process.argv.slice(2);
+const [cssFile, outFile, scale = '3m', year = ''] = process.argv.slice(2);
 const db = new PGlite();
 await db.exec(`
   create role anon nologin; create role authenticated nologin; create role authenticator nologin;
@@ -20,10 +21,10 @@ const iso = (d: unknown) => (d instanceof Date ? d.toISOString().slice(0, 10) : 
 const fix = <T extends Record<string, unknown>>(r: T) =>
   Object.fromEntries(Object.entries(r).map(([k, v]) => [k, v instanceof Date ? iso(v) : v])) as T;
 
-const enrollments = (await db.query(`select * from v_enrollments where status in ('active','paused')`)).rows.map(
+const enrollments = (await db.query(`select * from v_enrollments where status in ('active','paused','completed')`)).rows.map(
   (r) => fix(r as Record<string, unknown>),
 );
-const steps = (await db.query(`select * from v_steps where enrollment_status in ('active','paused')`)).rows.map(
+const steps = (await db.query(`select * from v_steps`)).rows.map(
   (r) => fix(r as Record<string, unknown>),
 );
 const overdue = enrollments.reduce((n, e) => n + Number(e.overdue_steps), 0);
@@ -40,7 +41,7 @@ const body = renderToStaticMarkup(
     <main className="mx-auto max-w-7xl px-4 py-6">
       <h1 className="text-xl font-semibold">Active patients</h1>
       <p className="mb-4 text-sm text-muted">{enrollments.length} active · {overdue} overdue steps</p>
-      <Timeline enrollments={enrollments as never} steps={steps as never} today={todayInNewYork()} />
+      <Timeline enrollments={enrollments as never} steps={steps as never} today={todayInNewYork()} {...(() => { const w = resolveWindow({ scale, year }, todayInNewYork()); return { start: w.start, end: w.end }; })()} />
     </main>
   </div>,
 );

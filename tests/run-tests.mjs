@@ -346,6 +346,23 @@ console.log('\nFake data, screens, audit log, and access rules');
   try { await as(adminLogin, () => db.query(`delete from step_template where id = $1`, [tsSession2])); } catch (e) { fk = e.message; }
   check('A step patients already have cannot be removed', /foreign key/.test(fk), `(got ${fk})`);
 
+  // Deleting a patient, the way the admin button does it
+  const lsam = (await one(db, `select id from patient where patient_code = 'LSAM90'`)).id;
+  const staffTry = await as(staffLogin, () => db.query(`delete from patient where id = $1 returning id`, [lsam]).catch((e) => e));
+  check('Staff cannot delete a patient', staffTry instanceof Error || staffTry.rows.length === 0);
+  const fes = (await one(db, `select id from patient where patient_code = 'EMOC74'`)).id;
+  await as(adminLogin, async () => {
+    await db.query(`delete from enrollment where patient_id = $1 and converted_from is not null`, [fes]);
+    await db.query(`delete from enrollment where patient_id = $1`, [fes]);
+    await db.query(`delete from device_rental where patient_id = $1`, [fes]);
+    await db.query(`delete from patient where id = $1`, [fes]);
+  });
+  const goneP = await one(db, `select count(*)::int as n from patient where id = $1`, [fes]);
+  const goneS = await one(db, `select count(*)::int as n from supplement_log sl join enrollment e on e.id = sl.enrollment_id where e.patient_id = $1`, [fes]);
+  check('Admin can delete a patient, and their supplements go with them', goneP.n === 0 && goneS.n === 0);
+  const logged = await one(db, `select count(*)::int as n from audit_log where record_type = 'patient' and action = 'delete' and record_id = $1`, [fes]);
+  check('The deletion is recorded in the audit log', logged.n === 1);
+
   await as(staffLogin, () => db.query(`delete from audit_log`).catch(() => {}));
   const kept = await one(db, `select count(*)::int as n from audit_log`);
   check('Nobody can erase the audit log', kept.n > 100);

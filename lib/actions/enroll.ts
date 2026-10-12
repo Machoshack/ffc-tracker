@@ -133,3 +133,30 @@ export async function upgradeToP2(enrollmentId: string, patientId: string, _prev
   revalidatePath('/');
   redirect(`/patients/${patientId}?enrollment=${data}`);
 }
+
+// Admin only. Removes a patient and everything attached (programs, steps, supplements, tests, devices).
+// The audit log keeps a record of each removal. Meant for test patients and mistakes.
+export async function deletePatient(patientId: string, _prev: FormState, form: FormData): Promise<FormState> {
+  const { supabase, staff } = await getCurrentStaff();
+  if (staff?.role !== 'admin') return { error: 'Only an admin can delete a patient.' };
+
+  const { data: patient } = await supabase.from('patient').select('patient_code').eq('id', patientId).maybeSingle();
+  if (!patient) return { error: 'Patient not found.' };
+  if (String(form.get('confirm_code') ?? '').trim().toUpperCase() !== patient.patient_code.toUpperCase())
+    return { error: `Type ${patient.patient_code} to confirm.` };
+
+  // Upgraded programs point at the one they came from, so remove those first.
+  for (const step of [
+    () => supabase.from('enrollment').delete().eq('patient_id', patientId).not('converted_from', 'is', null),
+    () => supabase.from('enrollment').delete().eq('patient_id', patientId),
+    () => supabase.from('device_rental').delete().eq('patient_id', patientId),
+    () => supabase.from('patient').delete().eq('id', patientId),
+  ]) {
+    const { error } = await step();
+    if (error) return { error: `Could not delete: ${error.message}` };
+  }
+
+  revalidatePath('/');
+  revalidatePath('/patients');
+  redirect('/patients');
+}

@@ -4,6 +4,7 @@ import { getCurrentStaff } from '@/lib/supabase/server';
 import { todayInNewYork, weekdayDate } from '@/lib/dates';
 import { StepRow, type StepView } from './StepRow';
 import { UpgradeBox } from './UpgradeBox';
+import { DeletePatient } from './DeletePatient';
 import { P1Panel, type MarginRow, type SupplementRow, type TestRow } from './P1Panel';
 
 type Enrollment = {
@@ -222,6 +223,11 @@ export default async function PatientPage({
             })}
           </div>
         </>
+      )}
+      {staff?.role === 'admin' && (
+        <div className="mt-8 border-t border-line pt-4">
+          <DeletePatient patientId={id} code={patient.patient_code} />
+        </div>
       )}
     </div>
   );
