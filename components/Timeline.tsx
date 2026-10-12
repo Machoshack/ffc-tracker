@@ -155,7 +155,8 @@ export function Timeline({
 
       {/* Desktop: the timeline */}
       <div className="hidden overflow-x-auto rounded border border-line bg-white md:block">
-        <div className="min-w-[960px]">
+        {/* With only a few rows, leave room under them so step popups aren't cut off by the box edge. */}
+        <div className={`min-w-[960px] ${rows.length <= 4 ? 'pb-56' : ''}`}>
           <div className="grid grid-cols-[240px_1fr] border-b border-line text-xs text-muted">
             <div className="px-3 py-2">Patient</div>
             <div className="relative h-8">
@@ -206,7 +207,7 @@ export function Timeline({
                     .filter((m) => m.date >= start && m.date < end)
                     .map((m) => {
                       const x = pos(m.date);
-                      const below = rowIndex < rows.length / 2;
+                      const below = rows.length <= 4 || rowIndex < rows.length / 2;
                       return (
                         <span
                           key={m.stage}

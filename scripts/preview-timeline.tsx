@@ -7,7 +7,7 @@ import { Timeline } from '../components/Timeline';
 import { todayInNewYork } from '../lib/dates';
 import { resolveWindow } from '../lib/timelineWindow';
 
-const [cssFile, outFile, scale = '3m', year = ''] = process.argv.slice(2);
+const [cssFile, outFile, scale = '3m', year = '', program = ''] = process.argv.slice(2);
 const db = new PGlite();
 await db.exec(`
   create role anon nologin; create role authenticated nologin; create role authenticator nologin;
@@ -23,7 +23,7 @@ const fix = <T extends Record<string, unknown>>(r: T) =>
 
 const enrollments = (await db.query(`select * from v_enrollments where status in ('active','paused','completed')`)).rows.map(
   (r) => fix(r as Record<string, unknown>),
-);
+).filter((e) => !program || e.program_code === program);
 const steps = (await db.query(`select * from v_steps`)).rows.map(
   (r) => fix(r as Record<string, unknown>),
 );
