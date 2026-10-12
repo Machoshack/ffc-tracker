@@ -8,13 +8,19 @@ insert into staff_user (name, role) values
   ('Clinical Tester',    'staff'),
   ('Intern Tester',      'staff');
 
-insert into patient (patient_code, first_name, last_name, date_of_birth) values
-  ('T-1001', 'Avery',   'Test',   '1978-03-14'), ('T-1002', 'Blake',  'Sample', '1985-07-02'),
-  ('T-1003', 'Casey',   'Demo',   '1969-11-23'), ('T-1004', 'Drew',   'Fake',   '1991-01-30'),
-  ('T-1005', 'Emery',   'Mock',   '1974-09-09'), ('T-1006', 'Finley', 'Test',   '1988-05-17'),
-  ('T-1007', 'Gray',    'Sample', '1963-12-04'), ('T-1008', 'Harper', 'Demo',   '1980-08-21'),
-  ('T-1009', 'Indy',    'Fake',   '1995-02-11'), ('T-1010', 'Jules',  'Mock',   '1972-06-28'),
-  ('T-1011', 'Kai',     'Test',   '1983-10-15'), ('T-1012', 'Lane',   'Sample', '1990-04-06');
+insert into patient (patient_code) values
+  ('Ave.Tes.78'),
+  ('Bla.Sam.85'),
+  ('Cas.Dem.69'),
+  ('Dre.Fak.91'),
+  ('Eme.Moc.74'),
+  ('Fin.Tes.88'),
+  ('Gra.Sam.63'),
+  ('Har.Dem.80'),
+  ('Ind.Fak.95'),
+  ('Jul.Moc.72'),
+  ('Kai.Tes.83'),
+  ('Lan.Sam.90');
 
 do $$
 declare
@@ -23,13 +29,13 @@ declare
   fdesk uuid := (select id from staff_user where name = 'Front Desk Tester');
 begin
   -- T-1001 FHE, just did Visit 1
-  pid := (select id from patient where patient_code = 'T-1001');
+  pid := (select id from patient where patient_code = 'Ave.Tes.78');
   e := enroll_patient(pid, 'FHE', current_date - 3, 950, current_date - 3);
   update step set status = 'done', completed_on = due_date
    where enrollment_id = e and template_id in (select id from step_template where key like 'fhe_v1_%');
 
   -- T-1002 FHE, through Visit 2, Visit 2 happened 3 days late (timeline shifted)
-  pid := (select id from patient where patient_code = 'T-1002');
+  pid := (select id from patient where patient_code = 'Bla.Sam.85');
   e := enroll_patient(pid, 'FHE', current_date - 16, 950, current_date - 16);
   update step set status = 'done', completed_on = due_date
    where enrollment_id = e and template_id in (select id from step_template where key like 'fhe_v1_%');
@@ -42,7 +48,7 @@ begin
     from step_template t where t.id = s.template_id and s.enrollment_id = e and t.key = 'fhe_v2_bolt';
 
   -- T-1003 FHE, waiting on physician scores (overdue)
-  pid := (select id from patient where patient_code = 'T-1003');
+  pid := (select id from patient where patient_code = 'Cas.Dem.69');
   e := enroll_patient(pid, 'FHE', current_date - 26, 950, current_date - 26);
   update step s set status = 'done', completed_on = s.due_date
     from step_template t where t.id = s.template_id and s.enrollment_id = e
@@ -57,7 +63,7 @@ begin
      and t.key in ('fhe_eeg_returned', 'fhe_vitality_score');
 
   -- T-1004 P1, week 6
-  pid := (select id from patient where patient_code = 'T-1004');
+  pid := (select id from patient where patient_code = 'Dre.Fak.91');
   e := enroll_patient(pid, 'P1', current_date - 42, 3000, current_date - 42);
   update step s set status = 'done', completed_on = s.due_date
     from step_template t where t.id = s.template_id and s.enrollment_id = e
@@ -73,7 +79,7 @@ begin
     (e, 'Probiotic 50B',       70, current_date - 14, fdesk);
 
   -- T-1005 P1, week 18, heavy supplement use (close to budget)
-  pid := (select id from patient where patient_code = 'T-1005');
+  pid := (select id from patient where patient_code = 'Eme.Moc.74');
   e := enroll_patient(pid, 'P1', current_date - 126, 3000, current_date - 126);
   update step s set status = 'done', completed_on = s.due_date
     from step_template t where t.id = s.template_id and s.enrollment_id = e
@@ -95,7 +101,7 @@ begin
   from generate_series(0, 4) g;
 
   -- T-1006 Two-Step, between sessions
-  pid := (select id from patient where patient_code = 'T-1006');
+  pid := (select id from patient where patient_code = 'Fin.Tes.88');
   e := enroll_patient(pid, 'TS', current_date - 2, 495, current_date - 2);
   update step s set status = 'done', completed_on = s.due_date
     from step_template t where t.id = s.template_id and s.enrollment_id = e and t.key = 'ts_payment';
@@ -103,11 +109,11 @@ begin
     from step_template t where t.id = s.template_id and s.enrollment_id = e and t.key = 'ts_session1';
 
   -- T-1007 Two-Step, starting next week, not paid yet
-  pid := (select id from patient where patient_code = 'T-1007');
+  pid := (select id from patient where patient_code = 'Gra.Sam.63');
   e := enroll_patient(pid, 'TS', current_date + 5, 0, null);
 
   -- T-1008 P2, month 4 (FHE done, consult 1 overdue)
-  pid := (select id from patient where patient_code = 'T-1008');
+  pid := (select id from patient where patient_code = 'Har.Dem.80');
   e := enroll_patient(pid, 'P2', current_date - 100, 1650, current_date - 100);
   update step s set status = 'done', completed_on = s.due_date
     from step_template t where t.id = s.template_id and s.enrollment_id = e
@@ -128,16 +134,16 @@ begin
     from step_template t where t.id = s.template_id and s.enrollment_id = e and t.key in ('fhe_packet','fhe_v3_consult');
 
   -- T-1009 P1 just started
-  pid := (select id from patient where patient_code = 'T-1009');
+  pid := (select id from patient where patient_code = 'Ind.Fak.95');
   e := enroll_patient(pid, 'P1', current_date - 1, 3000, current_date - 1);
 
   -- T-1010 FHE starting this week
-  pid := (select id from patient where patient_code = 'T-1010');
+  pid := (select id from patient where patient_code = 'Jul.Moc.72');
   e := enroll_patient(pid, 'FHE', current_date + 2, 950, current_date);
 
   -- Devices
   insert into device_rental (patient_id, device_type, device_label, out_date, due_back_date) values
-    ((select id from patient where patient_code = 'T-1011'), 'Firstbeat monitor', 'FB-03', current_date - 40, current_date - 40 + 91),
-    ((select id from patient where patient_code = 'T-1012'), 'Firstbeat monitor', 'FB-01', current_date - 100, current_date - 100 + 91),
-    ((select id from patient where patient_code = 'T-1002'), 'Sleep EEG (SP40)',  'EEG-2', current_date - 5,  current_date - 1);
+    ((select id from patient where patient_code = 'Kai.Tes.83'), 'Firstbeat monitor', 'FB-03', current_date - 40, current_date - 40 + 91),
+    ((select id from patient where patient_code = 'Lan.Sam.90'), 'Firstbeat monitor', 'FB-01', current_date - 100, current_date - 100 + 91),
+    ((select id from patient where patient_code = 'Bla.Sam.85'), 'Sleep EEG (SP40)',  'EEG-2', current_date - 5,  current_date - 1);
 end $$;

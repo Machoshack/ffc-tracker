@@ -3,8 +3,14 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getCurrentStaff } from '@/lib/supabase/server';
+import { PATIENT_CODE_PATTERN } from '@/lib/patientCode';
 
-export type FormState = { error?: string; existingId?: string; values?: Record<string, string> };
+export type FormState = {
+  error?: string;
+  existingId?: string;
+  suggestedCode?: string;
+  values?: Record<string, string>;
+};
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const PROGRAMS = ['TS', 'FHE', 'P1', 'P2'];
@@ -12,7 +18,8 @@ const PROGRAMS = ['TS', 'FHE', 'P1', 'P2'];
 function friendly(message: string): string {
   if (/one_open_enrollment_per_patient/.test(message))
     return 'This patient already has an active program. Finish, pause, or cancel it first.';
-  if (/patient_same_person/.test(message)) return 'A patient with this name and date of birth already exists.';
+  if (/patient_patient_code_key/.test(message)) return 'That patient code is already in use.';
+  if (/patient_code_format/.test(message)) return 'The patient code is not in the right format.';
   if (/Upgrade window closed on (\S+)/.test(message))
     return `The one-month upgrade window closed on ${message.match(/closed on (\S+)/)![1]}.`;
   if (/Not an active staff account|Login required/.test(message)) return 'You are not logged in as staff.';
@@ -45,29 +52,36 @@ async function createPatientInner(form: FormData): Promise<FormState> {
   const { supabase, staff } = await getCurrentStaff();
   if (!staff) return { error: 'You are not logged in as staff.' };
 
-  const first = String(form.get('first_name') ?? '').trim();
-  const last = String(form.get('last_name') ?? '').trim();
-  const dob = String(form.get('date_of_birth') ?? '');
-  if (!first || !last) return { error: 'Enter first and last name.' };
-  if (!ISO_DATE.test(dob)) return { error: 'Enter a date of birth.' };
+  // Only the code arrives here. Full names and birth year stay in the browser.
+  const code = String(form.get('patient_code') ?? '').trim();
+  if (!PATIENT_CODE_PATTERN.test(code)) return { error: 'Enter first name, last name and a four-digit birth year.' };
+  const differentPerson = form.get('different_person') === '1';
   const e = readEnrollment(form);
   if ('error' in e) return { error: e.error };
 
-  // Returning patient? Point to their existing record instead of making a second one.
-  const { data: match } = await supabase
-    .from('patient').select('id')
-    .ilike('first_name', first).ilike('last_name', last).eq('date_of_birth', dob)
-    .maybeSingle();
-  if (match) {
-    return {
-      error: `${first} ${last} with this date of birth is already a patient. Open their page and use Start a program.`,
-      existingId: match.id,
-    };
+  // Same code already used? Either it's a returning patient or a different person who shares it.
+  const { data: taken } = await supabase
+    .from('patient').select('id, patient_code')
+    .or(`patient_code.eq.${code},patient_code.like.${code}-%`);
+  let saveAs = code;
+  if (taken?.length) {
+    const used = new Set(taken.map((t) => t.patient_code));
+    let n = 2;
+    while (used.has(`${code}-${n}`)) n++;
+    const nextFree = `${code}-${n}`;
+    if (!differentPerson) {
+      return {
+        error: `${code} is already a patient.`,
+        existingId: taken.find((t) => t.patient_code === code)?.id ?? taken[0].id,
+        suggestedCode: nextFree,
+      };
+    }
+    saveAs = nextFree;
   }
 
   const { data: patient, error } = await supabase
     .from('patient')
-    .insert({ first_name: first, last_name: last, date_of_birth: dob, display_name: `${first} ${last}` })
+    .insert({ patient_code: saveAs, display_name: saveAs })
     .select('id').single();
   if (error) return { error: friendly(error.message) };
 
