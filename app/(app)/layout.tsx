@@ -6,7 +6,7 @@ const NAV = [
   { href: '/queue', label: 'My queue' },
   { href: '/patients', label: 'Patients' },
   { href: '/margin', label: 'P1 margin' },
-  // More screens are added here as they're built: Settings, Devices, Dashboard, Pipeline.
+  // More screens are added here as they're built: Devices, Dashboard, Pipeline. Settings shows for admins only.
 ];
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -37,8 +37,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <header className="border-b border-line bg-white">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
           <span className="font-semibold text-brand">FFC Tracker</span>
-          <nav className="order-last flex w-full gap-5 text-sm sm:order-none sm:w-auto">
-            {NAV.map((n) => (
+          <nav className="order-last -mx-4 flex w-[calc(100%+2rem)] gap-5 overflow-x-auto whitespace-nowrap px-4 text-sm sm:order-none sm:mx-0 sm:w-auto sm:px-0">
+            {[...NAV, ...(staff.role === 'admin' ? [{ href: '/settings', label: 'Settings' }] : [])].map((n) => (
               <Link key={n.href} href={n.href} className="text-ink hover:text-brand">{n.label}</Link>
             ))}
           </nav>

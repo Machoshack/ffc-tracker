@@ -329,6 +329,23 @@ console.log('\nFake data, screens, audit log, and access rules');
   const gone = await one(db, `select count(*)::int as n from audit_log where record_type = 'test_cost_log' and action = 'delete'`);
   check('The removal is recorded in the audit log', gone.n === 1);
 
+  // Settings, as admin and as staff
+  const addByStaff = await as(staffLogin, () => db.query(
+    `insert into staff_user (name, role, email) values ('Sneaky', 'admin', 'sneaky@example.com') returning id`).catch((e) => e));
+  check('Staff cannot add people to the staff list', addByStaff instanceof Error);
+  const addByAdmin = await as(adminLogin, () => db.query(
+    `insert into staff_user (name, role, email) values ('New Nurse', 'staff', 'nurse@example.com') returning id`));
+  check('Admin can add people to the staff list', addByAdmin.rows.length === 1);
+  const tsSession2 = (await one(db, `select t.id from step_template t join program p on p.id = t.program_id
+                                    where p.code = 'TS' and t.key = 'ts_session2'`)).id;
+  const ren = await as(adminLogin, () => db.query(`update step_template set name = 'Session 2: plan delivered' where id = $1 returning id`, [tsSession2]));
+  check('Admin can rename a program step', ren.rows.length === 1);
+  const ren2 = await as(staffLogin, () => db.query(`update step_template set name = 'x' where id = $1 returning id`, [tsSession2]));
+  check('Staff cannot edit program steps', ren2.rows.length === 0);
+  let fk = '';
+  try { await as(adminLogin, () => db.query(`delete from step_template where id = $1`, [tsSession2])); } catch (e) { fk = e.message; }
+  check('A step patients already have cannot be removed', /foreign key/.test(fk), `(got ${fk})`);
+
   await as(staffLogin, () => db.query(`delete from audit_log`).catch(() => {}));
   const kept = await one(db, `select count(*)::int as n from audit_log`);
   check('Nobody can erase the audit log', kept.n > 100);

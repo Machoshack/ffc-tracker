@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 
@@ -10,6 +10,21 @@ export default function SetPasswordPage() {
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // Invite links can arrive with the login in the address after "#". Pick it up so the person is signed in.
+  useEffect(() => {
+    const hash = new URLSearchParams(window.location.hash.slice(1));
+    const access_token = hash.get('access_token');
+    const refresh_token = hash.get('refresh_token');
+    if (access_token && refresh_token) {
+      createClient().auth.setSession({ access_token, refresh_token }).then(({ error }) => {
+        if (error) setError('This invite link has expired. Ask an admin to send a new one.');
+        window.history.replaceState(null, '', window.location.pathname);
+      });
+    } else if (hash.get('error_description')) {
+      setError(`${hash.get('error_description')}. Ask an admin to send a new invite.`);
+    }
+  }, []);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();

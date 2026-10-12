@@ -16,7 +16,7 @@ Waiting on: Alan trimming the current supplement list (100+ products) to the one
 
 ## Still to build from the plan
 
-- Settings: staff accounts, program steps, prices, budgets
+
 - Devices: Firstbeat and sleep device rentals
 - Dashboard
 - Pipeline board
