@@ -7,7 +7,7 @@ const NAV = [
 ];
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const { staff, email } = await getCurrentStaff();
+  const { staff, email, userId, lookupError } = await getCurrentStaff();
 
   if (!staff) {
     return (
@@ -17,6 +17,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <p className="mb-4 text-muted">
             {email ?? 'This login'} is not linked to an active staff account. Ask an admin to add this email.
           </p>
+          {lookupError && (
+            <p className="mb-4 rounded bg-paper p-2 font-mono text-xs text-late">Database error: {lookupError}</p>
+          )}
+          <p className="mb-4 font-mono text-xs text-muted">Login ID: {userId}</p>
           <form action="/auth/signout" method="post">
             <button className="rounded border border-line px-3 py-1.5">Log out</button>
           </form>

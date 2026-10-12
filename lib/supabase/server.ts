@@ -31,12 +31,18 @@ export async function getCurrentStaff() {
   const supabase = await createClient();
   const { data: claims } = await supabase.auth.getClaims();
   const userId = claims?.claims?.sub;
-  if (!userId) return { supabase, userId: null, email: null, staff: null };
-  const { data: staff } = await supabase
+  if (!userId) return { supabase, userId: null, email: null, staff: null, lookupError: null };
+  const { data: staff, error } = await supabase
     .from('staff_user')
     .select('id, name, role')
     .eq('auth_user_id', userId)
     .eq('active', true)
     .maybeSingle<StaffUser>();
-  return { supabase, userId, email: (claims?.claims?.email as string) ?? null, staff };
+  return {
+    supabase,
+    userId,
+    email: (claims?.claims?.email as string) ?? null,
+    staff,
+    lookupError: error ? `${error.code ?? ''} ${error.message}`.trim() : null,
+  };
 }
