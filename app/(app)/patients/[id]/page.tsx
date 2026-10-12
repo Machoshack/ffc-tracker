@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { getCurrentStaff } from '@/lib/supabase/server';
 import { todayInNewYork, weekdayDate } from '@/lib/dates';
 import { StepRow, type StepView } from './StepRow';
+import { UpgradeBox } from './UpgradeBox';
 
 type Enrollment = {
   enrollment_id: string;
@@ -96,6 +97,15 @@ export default async function PatientPage({
     );
   }
 
+  // FHE patients who can still move to Protocol II.
+  const { data: upgrade } = current
+    ? await supabase.from('v_upgrade_window').select('enrollment_id, days_left').eq('enrollment_id', current.enrollment_id).maybeSingle()
+    : { data: null };
+  const { data: p2 } = upgrade
+    ? await supabase.from('program').select('price').eq('code', 'P2').maybeSingle()
+    : { data: null };
+  const hasOpenProgram = enrollments.some((e) => e.status === 'active' || e.status === 'paused');
+
   const stages = new Map<string, StepRowData[]>();
   for (const s of steps) stages.set(s.stage_name, [...(stages.get(s.stage_name) ?? []), s]);
   const doneCount = steps.filter((s) => s.status === 'done' || s.status === 'skipped').length;
@@ -110,6 +120,11 @@ export default async function PatientPage({
           <h1 className="text-2xl font-semibold">{patient.display_name}</h1>
           <p className="text-sm text-muted">{patient.patient_code}</p>
         </div>
+        {!hasOpenProgram && (
+          <Link href={`/patients/new?patient=${id}`} className="rounded bg-brand px-3 py-1.5 text-sm font-medium text-white">
+            Start a program
+          </Link>
+        )}
         {enrollments.length > 1 && (
           <nav className="flex flex-wrap gap-1 text-sm">
             {enrollments.map((e) => (
@@ -146,6 +161,11 @@ export default async function PatientPage({
               </div>
             ))}
           </section>
+
+          {upgrade && p2 && (
+            <UpgradeBox enrollmentId={current.enrollment_id} patientId={id} credit={Number(current.amount_paid)}
+              p2Price={Number(p2.price)} daysLeft={upgrade.days_left} />
+          )}
 
           <div className="space-y-4">
             {[...stages.entries()].map(([stage, stageSteps]) => {

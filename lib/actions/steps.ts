@@ -26,6 +26,7 @@ async function updateStep(stepId: string, patientId: string, values: Record<stri
 
   revalidatePath(`/patients/${patientId}`);
   revalidatePath('/');
+  revalidatePath('/queue');
   return {};
 }
 

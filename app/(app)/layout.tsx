@@ -3,7 +3,9 @@ import { getCurrentStaff } from '@/lib/supabase/server';
 
 const NAV = [
   { href: '/', label: 'Timeline' },
-  // More screens are added here as they're built: My queue, Pipeline, Dashboard, P1 margin, Devices, Settings.
+  { href: '/queue', label: 'My queue' },
+  { href: '/patients/new', label: 'Add patient' },
+  // More screens are added here as they're built: Pipeline, Dashboard, P1 margin, Devices, Settings.
 ];
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -32,9 +34,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div className="min-h-screen">
       <header className="border-b border-line bg-white">
-        <div className="mx-auto flex max-w-7xl items-center gap-6 px-4 py-3">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
           <span className="font-semibold text-brand">FFC Tracker</span>
-          <nav className="flex gap-4 text-sm">
+          <nav className="order-last flex w-full gap-5 text-sm sm:order-none sm:w-auto">
             {NAV.map((n) => (
               <Link key={n.href} href={n.href} className="text-ink hover:text-brand">{n.label}</Link>
             ))}

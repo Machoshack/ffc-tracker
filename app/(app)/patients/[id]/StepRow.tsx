@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { markDone, markStarted, undoStep, skipStep, rebook, saveNote, type ActionResult } from './actions';
+import { markDone, markStarted, undoStep, skipStep, rebook, saveNote, type ActionResult } from '@/lib/actions/steps';
 
 export type StepView = {
   step_id: string;

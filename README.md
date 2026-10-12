@@ -2,7 +2,7 @@
 
 Internal app for Fresh Fit Consulting to track patients through programs, steps owed, P1 supplement budgets and margin, and device rentals.
 
-Status: database, login, timeline, and patient page are built. More screens come next.
+Status: database, login, timeline, patient page, My queue, and Add patient are built. More screens come next.
 
 ## What's here
 

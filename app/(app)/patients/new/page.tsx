@@ -1,0 +1,46 @@
+import Link from 'next/link';
+import { getCurrentStaff } from '@/lib/supabase/server';
+import { addDays, todayInNewYork, toDate } from '@/lib/dates';
+import { NewPatientForm } from './NewPatientForm';
+import type { ProgramOption } from '@/components/EnrollFields';
+
+const ORDER = ['TS', 'FHE', 'P1', 'P2'];
+
+function nextClinicDay(iso: string) {
+  let d = iso;
+  while (![1, 3, 5].includes(toDate(d).getUTCDay())) d = addDays(d, 1);
+  return d;
+}
+
+export default async function NewPatientPage({ searchParams }: { searchParams: Promise<{ patient?: string; retry?: string }> }) {
+  const { patient: patientId, retry } = await searchParams;
+  const { supabase } = await getCurrentStaff();
+
+  const { data: programRows } = await supabase.from('program').select('code, name, price').eq('active', true);
+  const programs = ((programRows ?? []) as ProgramOption[]).sort((a, b) => ORDER.indexOf(a.code) - ORDER.indexOf(b.code));
+
+  const { data: existing } = patientId
+    ? await supabase.from('patient').select('id, display_name, patient_code').eq('id', patientId).maybeSingle()
+    : { data: null };
+
+  const today = todayInNewYork();
+
+  return (
+    <div className="mx-auto max-w-2xl">
+      <Link href={existing ? `/patients/${existing.id}` : '/'} className="text-sm text-muted hover:text-brand">
+        ← {existing ? existing.display_name : 'Timeline'}
+      </Link>
+      <h1 className="mt-2 mb-1 text-xl font-semibold">{existing ? 'Start a program' : 'Add patient'}</h1>
+      <p className="mb-4 text-sm text-muted">
+        Store only a name and a code here. Clinical details stay in the chart.
+      </p>
+      {retry && (
+        <p className="mb-4 rounded bg-late/10 px-3 py-2 text-sm text-late">
+          The patient was saved, but the program didn't start: {retry}
+        </p>
+      )}
+      <NewPatientForm programs={programs} defaultStart={nextClinicDay(today)} today={today}
+        existing={existing ?? undefined} />
+    </div>
+  );
+}
