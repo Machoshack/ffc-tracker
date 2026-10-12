@@ -74,7 +74,7 @@ console.log('\nClinic-day snapping');
 console.log('\nFHE enrollment, blocks, and shifting');
 {
   const db = await freshDb();
-  const pid = (await one(db, `insert into patient (patient_code) values ('Tes.Pat.01') returning id`)).id;
+  const pid = (await one(db, `insert into patient (patient_code) values ('TPAT01') returning id`)).id;
   const e = (await one(db, `select enroll_patient($1, 'FHE', '2026-10-12', 950) as id`, [pid])).id;
 
   const n = await one(db, `select count(*)::int as n from step where enrollment_id = $1`, [e]);
@@ -146,7 +146,7 @@ console.log('\nFHE enrollment, blocks, and shifting');
 console.log('\nUpgrade window and one-program rule');
 {
   const db = await freshDb();
-  const pid = (await one(db, `insert into patient (patient_code) values ('Tes.Pat.02') returning id`)).id;
+  const pid = (await one(db, `insert into patient (patient_code) values ('TPAT02') returning id`)).id;
   const e = (await one(db, `select enroll_patient($1, 'FHE', current_date - 80, 950) as id`, [pid])).id;
   await expectError(db, 'Second open program for the same patient is refused',
     `select enroll_patient('${pid}', 'P1', current_date, 3000)`, /one_open_enrollment_per_patient/);
@@ -161,7 +161,7 @@ console.log('\nUpgrade window and one-program rule');
 console.log('\nP1 supplements, budget and margin');
 {
   const db = await freshDb();
-  const pid = (await one(db, `insert into patient (patient_code) values ('Tes.Pat.03') returning id`)).id;
+  const pid = (await one(db, `insert into patient (patient_code) values ('TPAT03') returning id`)).id;
   const e = (await one(db, `select enroll_patient($1, 'P1', '2026-10-12', 3000) as id`, [pid])).id;
 
   check('Consultation 1 due week 4 (Mon 11/9)', await stepDue(db, e, 'p1_consult1') === '2026-11-09');
@@ -190,13 +190,13 @@ console.log('\nP1 supplements, budget and margin');
 console.log('\nTwo-Step and P2 templates');
 {
   const db = await freshDb();
-  const pid = (await one(db, `insert into patient (patient_code) values ('Tes.Pat.04') returning id`)).id;
+  const pid = (await one(db, `insert into patient (patient_code) values ('TPAT04') returning id`)).id;
   const e = (await one(db, `select enroll_patient($1, 'TS', '2026-10-14', 495) as id`, [pid])).id;
   await expectError(db, 'Session 1 blocked until payment is collected',
     setStepSql(e, 'ts_session1', 'done'), /BLOCKED.*Payment collected/);
   check('Session 2 due a week after Session 1 (Wed 10/21)', await stepDue(db, e, 'ts_session2') === '2026-10-21');
 
-  const pid2 = (await one(db, `insert into patient (patient_code) values ('Tes.Pat.05') returning id`)).id;
+  const pid2 = (await one(db, `insert into patient (patient_code) values ('TPAT05') returning id`)).id;
   const p2 = (await one(db, `select enroll_patient($1, 'P2', '2026-10-12', 1650) as id`, [pid2])).id;
   const n = await one(db, `select count(*)::int as n from step where enrollment_id = $1`, [p2]);
   check('P2 creates 14 FHE steps + 3 consultations', n.n === 17);
@@ -216,7 +216,7 @@ console.log('\nFake data, screens, audit log, and access rules');
   console.table(en);
 
   const t1002 = await one(db, `select shift_days from enrollment e join patient p on p.id = e.patient_id
-                               where p.patient_code = 'Bla.Sam.85'`);
+                               where p.patient_code = 'BSAM85'`);
   check('T-1002 late Visit 2 shifted plan by 2 days', t1002.shift_days === 2, `(got ${t1002.shift_days})`);
 
   const margin = await rows(db, `select patient_code, fee, test_costs, supplement_cost, supplement_remaining, margin
@@ -258,7 +258,7 @@ console.log('\nFake data, screens, audit log, and access rules');
   const budget = await one(db, `select supplement_budget from program where code = 'P1'`);
   check('Admin can change the P1 supplement budget', Number(budget.supplement_budget) === 650);
 
-  const pid = (await one(db, `select id from patient where patient_code = 'Kai.Tes.83'`)).id;
+  const pid = (await one(db, `select id from patient where patient_code = 'KTES83'`)).id;
   const eid = await as(staffLogin, () => one(db, `select enroll_patient($1, 'TS', current_date + 3, 495) as id`, [pid]));
   check('Staff can enroll a patient', !!eid.id);
   const who = await one(db, `select s.name from audit_log a join staff_user s on s.id = a.staff_user_id
@@ -270,13 +270,13 @@ console.log('\nFake data, screens, audit log, and access rules');
   catch (e) { blocked = /Not an active staff account/.test(e.message); }
   check('A login that is not on the staff list cannot enroll anyone', blocked);
 
-  await as(staffLogin, () => db.query(`delete from patient where patient_code = 'Lan.Sam.90'`));
-  const still = await one(db, `select count(*)::int as n from patient where patient_code = 'Lan.Sam.90'`);
+  await as(staffLogin, () => db.query(`delete from patient where patient_code = 'LSAM90'`));
+  const still = await one(db, `select count(*)::int as n from patient where patient_code = 'LSAM90'`);
   check('Staff cannot delete records', still.n === 1);
 
   // What the patient page does, done as a logged-in staff member
   const t1001 = (await one(db, `select e.id from enrollment e join patient p on p.id = e.patient_id
-                                where p.patient_code = 'Ave.Tes.78' and e.status = 'active'`)).id;
+                                where p.patient_code = 'ATES78' and e.status = 'active'`)).id;
   const stepId = async (key) => (await one(db, `select s.id from step s join step_template t on t.id = s.template_id
                                                where s.enrollment_id = $1 and t.key = $2`, [t1001, key])).id;
   let msg = '';
@@ -333,24 +333,26 @@ console.log('\nLinking logins to the staff list');
 console.log('\nPatient codes');
 {
   const db = await freshDb({ seed: true });
-  const p = await one(db, `insert into patient (patient_code) values (' Mik.Smi.91 ') returning patient_code, display_name`);
-  check('Code is stored trimmed and used as the display name', p.patient_code === 'Mik.Smi.91' && p.display_name === 'Mik.Smi.91');
+  const p = await one(db, `insert into patient (patient_code) values (' MSMI94 ') returning patient_code, display_name`);
+  check('Code is stored trimmed and used as the display name', p.patient_code === 'MSMI94' && p.display_name === 'MSMI94');
   let dup = '';
-  try { await db.query(`insert into patient (patient_code) values ('Mik.Smi.91')`); } catch (e) { dup = e.message; }
+  try { await db.query(`insert into patient (patient_code) values ('MSMI94')`); } catch (e) { dup = e.message; }
   check('The same code cannot be saved twice', /patient_patient_code_key/.test(dup), `(got ${dup})`);
-  await db.query(`insert into patient (patient_code) values ('Mik.Smi.91-2')`);
+  await db.query(`insert into patient (patient_code) values ('MSMI94-2')`);
   check('A second person with the same code is saved with -2', true);
+  await db.query(`insert into patient (patient_code) values ('MLI94')`);
+  check('Short last names make shorter codes (MLI94)', true);
   let bad = '';
   try { await db.query(`insert into patient (patient_code) values ('Mike Smith 1991')`); } catch (e) { bad = e.message; }
   check('Codes in the wrong format are refused', /patient_code_format/.test(bad), `(got ${bad})`);
   const cols = await one(db, `select count(*)::int as n from information_schema.columns
                               where table_name = 'patient' and column_name in ('first_name','last_name','date_of_birth')`);
   check('Full name and date of birth are not stored', cols.n === 0);
-  const fake = await one(db, `select count(*)::int as n from patient where patient_code ~ '^[A-Z][a-z]{2}\\.[A-Z][a-z]{2}\\.\\d{2}$'`);
+  const fake = await one(db, `select count(*)::int as n from patient where patient_code ~ '^[A-Z]{4}[0-9]{2}$'`);
   check('Fake patients use codes', fake.n === 13, `(got ${fake.n})`);
 
   // One program, then another
-  const pid = (await one(db, `select id from patient where patient_code = 'Fin.Tes.88'`)).id;
+  const pid = (await one(db, `select id from patient where patient_code = 'FTES88'`)).id;
   await db.query(`update enrollment set status = 'completed', completed_on = current_date where patient_id = $1`, [pid]);
   const next = await one(db, `select enroll_patient($1, 'FHE', current_date + 2, 950) as id`, [pid]);
   const count = await one(db, `select count(*)::int as n from enrollment where patient_id = $1`, [pid]);

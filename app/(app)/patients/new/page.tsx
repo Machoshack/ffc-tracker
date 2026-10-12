@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { getCurrentStaff } from '@/lib/supabase/server';
-import { addDays, todayInNewYork, toDate, longDate } from '@/lib/dates';
+import { addDays, todayInNewYork, toDate } from '@/lib/dates';
 import { NewPatientForm } from './NewPatientForm';
 import type { ProgramOption } from '@/components/EnrollFields';
 
@@ -20,19 +20,21 @@ export default async function NewPatientPage({ searchParams }: { searchParams: P
   const programs = ((programRows ?? []) as ProgramOption[]).sort((a, b) => ORDER.indexOf(a.code) - ORDER.indexOf(b.code));
 
   const { data: existing } = patientId
-    ? await supabase.from('patient').select('id, display_name, date_of_birth').eq('id', patientId).maybeSingle()
+    ? await supabase.from('patient').select('id, patient_code').eq('id', patientId).maybeSingle()
     : { data: null };
 
   const today = todayInNewYork();
 
   return (
     <div className="mx-auto max-w-2xl">
-      <Link href={existing ? `/patients/${existing.id}` : '/'} className="text-sm text-muted hover:text-brand">
-        ← {existing ? existing.display_name : 'Timeline'}
+      <Link href={existing ? `/patients/${existing.id}` : '/patients'} className="text-sm text-muted hover:text-brand">
+        ← {existing ? existing.patient_code : 'Patients'}
       </Link>
       <h1 className="mt-2 mb-1 text-xl font-semibold">{existing ? 'Start a program' : 'Add patient'}</h1>
       <p className="mb-4 text-sm text-muted">
-        Clinical details stay in the chart.
+        {existing
+          ? 'Pick the next program for this patient.'
+          : 'Enter the name and birth year to build the patient code. Clinical details stay in the chart.'}
       </p>
       {retry && (
         <p className="mb-4 rounded bg-late/10 px-3 py-2 text-sm text-late">
@@ -40,8 +42,7 @@ export default async function NewPatientPage({ searchParams }: { searchParams: P
         </p>
       )}
       <NewPatientForm programs={programs} defaultStart={nextClinicDay(today)} today={today}
-        existing={existing ? { id: existing.id, display_name: existing.display_name,
-          dob: existing.date_of_birth ? `Born ${longDate(existing.date_of_birth)}` : '' } : undefined} />
+        existing={existing ? { id: existing.id, code: existing.patient_code } : undefined} />
     </div>
   );
 }

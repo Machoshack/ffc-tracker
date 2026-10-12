@@ -859,6 +859,74 @@ update patient p
  where p.patient_code = v.code and p.date_of_birth is null;
 
 
+-- ===== supabase/migrations/0007_patient_codes.sql =====
+-- FFC Patient Tracker: patients are identified by a short code only.
+-- Code = first initial + first 3 letters of last name + last 2 digits of birth year (Mike Smith 1994 -> MSMI94).
+-- Full name and date of birth are no longer stored. Safe to run more than once.
+
+-- Convert anyone added with full details (fake patients) to a code first.
+do $$
+begin
+  if exists (select 1 from information_schema.columns
+             where table_schema = 'public' and table_name = 'patient' and column_name = 'first_name') then
+    -- Two people with the same code get -2, -3... in the order they were added.
+    with coded as (
+      select id,
+             upper(left(regexp_replace(first_name, '[^A-Za-z]', '', 'g'), 1)) ||
+             upper(left(regexp_replace(last_name,  '[^A-Za-z]', '', 'g'), 3)) ||
+             to_char(date_of_birth, 'YY') as base,
+             created_at
+        from patient
+       where first_name is not null and last_name is not null and date_of_birth is not null
+         and patient_code !~ '^[A-Z]{2,4}[0-9]{2}(-[0-9]+)?$'
+    ), numbered as (
+      select id, base, row_number() over (partition by base order by created_at, id) as n from coded
+    )
+    update patient p
+       set patient_code = case when n.n = 1 then n.base else n.base || '-' || n.n end
+      from numbered n
+     where p.id = n.id;
+  end if;
+end $$;
+
+drop trigger if exists patient_names on patient;
+drop function if exists patient_names();
+drop index if exists patient_same_person;
+alter table patient drop column if exists first_name;
+alter table patient drop column if exists last_name;
+alter table patient drop column if exists date_of_birth;
+
+-- Screens show display_name; it always equals the code now.
+alter table patient alter column patient_code drop default;
+drop sequence if exists patient_code_seq;
+
+create or replace function patient_display_is_code() returns trigger
+language plpgsql set search_path = public as $$
+begin
+  new.patient_code := trim(new.patient_code);
+  new.display_name := new.patient_code;
+  return new;
+end $$;
+
+drop trigger if exists patient_display_is_code on patient;
+create trigger patient_display_is_code
+  before insert or update on patient
+  for each row execute function patient_display_is_code();
+
+update patient set display_name = patient_code where display_name is distinct from patient_code;
+
+-- Codes must look like MSMI94, with -2, -3... for a second person who shares a code.
+alter table patient drop constraint if exists patient_code_format;
+alter table patient add constraint patient_code_format
+  check (patient_code ~ '^[A-Z]{2,4}[0-9]{2}(-[0-9]+)?$') not valid;
+
+-- Old audit entries for patients held full names. Remove those fields from the log.
+update audit_log
+   set detail = detail - 'first_name' - 'last_name' - 'date_of_birth'
+ where record_type = 'patient'
+   and (detail ? 'first_name' or detail ? 'last_name' or detail ? 'date_of_birth');
+
+
 -- ===== supabase/seed.sql =====
 -- FFC Patient Tracker: FAKE data for testing. No real patients.
 -- Dates are relative to today so the timeline always looks current.
@@ -870,13 +938,19 @@ insert into staff_user (name, role) values
   ('Clinical Tester',    'staff'),
   ('Intern Tester',      'staff');
 
-insert into patient (patient_code, first_name, last_name, date_of_birth) values
-  ('T-1001', 'Avery',   'Test',   '1978-03-14'), ('T-1002', 'Blake',  'Sample', '1985-07-02'),
-  ('T-1003', 'Casey',   'Demo',   '1969-11-23'), ('T-1004', 'Drew',   'Fake',   '1991-01-30'),
-  ('T-1005', 'Emery',   'Mock',   '1974-09-09'), ('T-1006', 'Finley', 'Test',   '1988-05-17'),
-  ('T-1007', 'Gray',    'Sample', '1963-12-04'), ('T-1008', 'Harper', 'Demo',   '1980-08-21'),
-  ('T-1009', 'Indy',    'Fake',   '1995-02-11'), ('T-1010', 'Jules',  'Mock',   '1972-06-28'),
-  ('T-1011', 'Kai',     'Test',   '1983-10-15'), ('T-1012', 'Lane',   'Sample', '1990-04-06');
+insert into patient (patient_code) values
+  ('ATES78'),
+  ('BSAM85'),
+  ('CDEM69'),
+  ('DFAK91'),
+  ('EMOC74'),
+  ('FTES88'),
+  ('GSAM63'),
+  ('HDEM80'),
+  ('IFAK95'),
+  ('JMOC72'),
+  ('KTES83'),
+  ('LSAM90');
 
 do $$
 declare
@@ -885,13 +959,13 @@ declare
   fdesk uuid := (select id from staff_user where name = 'Front Desk Tester');
 begin
   -- T-1001 FHE, just did Visit 1
-  pid := (select id from patient where patient_code = 'T-1001');
+  pid := (select id from patient where patient_code = 'ATES78');
   e := enroll_patient(pid, 'FHE', current_date - 3, 950, current_date - 3);
   update step set status = 'done', completed_on = due_date
    where enrollment_id = e and template_id in (select id from step_template where key like 'fhe_v1_%');
 
   -- T-1002 FHE, through Visit 2, Visit 2 happened 3 days late (timeline shifted)
-  pid := (select id from patient where patient_code = 'T-1002');
+  pid := (select id from patient where patient_code = 'BSAM85');
   e := enroll_patient(pid, 'FHE', current_date - 16, 950, current_date - 16);
   update step set status = 'done', completed_on = due_date
    where enrollment_id = e and template_id in (select id from step_template where key like 'fhe_v1_%');
@@ -904,7 +978,7 @@ begin
     from step_template t where t.id = s.template_id and s.enrollment_id = e and t.key = 'fhe_v2_bolt';
 
   -- T-1003 FHE, waiting on physician scores (overdue)
-  pid := (select id from patient where patient_code = 'T-1003');
+  pid := (select id from patient where patient_code = 'CDEM69');
   e := enroll_patient(pid, 'FHE', current_date - 26, 950, current_date - 26);
   update step s set status = 'done', completed_on = s.due_date
     from step_template t where t.id = s.template_id and s.enrollment_id = e
@@ -919,7 +993,7 @@ begin
      and t.key in ('fhe_eeg_returned', 'fhe_vitality_score');
 
   -- T-1004 P1, week 6
-  pid := (select id from patient where patient_code = 'T-1004');
+  pid := (select id from patient where patient_code = 'DFAK91');
   e := enroll_patient(pid, 'P1', current_date - 42, 3000, current_date - 42);
   update step s set status = 'done', completed_on = s.due_date
     from step_template t where t.id = s.template_id and s.enrollment_id = e
@@ -935,7 +1009,7 @@ begin
     (e, 'Probiotic 50B',       70, current_date - 14, fdesk);
 
   -- T-1005 P1, week 18, heavy supplement use (close to budget)
-  pid := (select id from patient where patient_code = 'T-1005');
+  pid := (select id from patient where patient_code = 'EMOC74');
   e := enroll_patient(pid, 'P1', current_date - 126, 3000, current_date - 126);
   update step s set status = 'done', completed_on = s.due_date
     from step_template t where t.id = s.template_id and s.enrollment_id = e
@@ -957,7 +1031,7 @@ begin
   from generate_series(0, 4) g;
 
   -- T-1006 Two-Step, between sessions
-  pid := (select id from patient where patient_code = 'T-1006');
+  pid := (select id from patient where patient_code = 'FTES88');
   e := enroll_patient(pid, 'TS', current_date - 2, 495, current_date - 2);
   update step s set status = 'done', completed_on = s.due_date
     from step_template t where t.id = s.template_id and s.enrollment_id = e and t.key = 'ts_payment';
@@ -965,11 +1039,11 @@ begin
     from step_template t where t.id = s.template_id and s.enrollment_id = e and t.key = 'ts_session1';
 
   -- T-1007 Two-Step, starting next week, not paid yet
-  pid := (select id from patient where patient_code = 'T-1007');
+  pid := (select id from patient where patient_code = 'GSAM63');
   e := enroll_patient(pid, 'TS', current_date + 5, 0, null);
 
   -- T-1008 P2, month 4 (FHE done, consult 1 overdue)
-  pid := (select id from patient where patient_code = 'T-1008');
+  pid := (select id from patient where patient_code = 'HDEM80');
   e := enroll_patient(pid, 'P2', current_date - 100, 1650, current_date - 100);
   update step s set status = 'done', completed_on = s.due_date
     from step_template t where t.id = s.template_id and s.enrollment_id = e
@@ -990,16 +1064,16 @@ begin
     from step_template t where t.id = s.template_id and s.enrollment_id = e and t.key in ('fhe_packet','fhe_v3_consult');
 
   -- T-1009 P1 just started
-  pid := (select id from patient where patient_code = 'T-1009');
+  pid := (select id from patient where patient_code = 'IFAK95');
   e := enroll_patient(pid, 'P1', current_date - 1, 3000, current_date - 1);
 
   -- T-1010 FHE starting this week
-  pid := (select id from patient where patient_code = 'T-1010');
+  pid := (select id from patient where patient_code = 'JMOC72');
   e := enroll_patient(pid, 'FHE', current_date + 2, 950, current_date);
 
   -- Devices
   insert into device_rental (patient_id, device_type, device_label, out_date, due_back_date) values
-    ((select id from patient where patient_code = 'T-1011'), 'Firstbeat monitor', 'FB-03', current_date - 40, current_date - 40 + 91),
-    ((select id from patient where patient_code = 'T-1012'), 'Firstbeat monitor', 'FB-01', current_date - 100, current_date - 100 + 91),
-    ((select id from patient where patient_code = 'T-1002'), 'Sleep EEG (SP40)',  'EEG-2', current_date - 5,  current_date - 1);
+    ((select id from patient where patient_code = 'KTES83'), 'Firstbeat monitor', 'FB-03', current_date - 40, current_date - 40 + 91),
+    ((select id from patient where patient_code = 'LSAM90'), 'Firstbeat monitor', 'FB-01', current_date - 100, current_date - 100 + 91),
+    ((select id from patient where patient_code = 'BSAM85'), 'Sleep EEG (SP40)',  'EEG-2', current_date - 5,  current_date - 1);
 end $$;

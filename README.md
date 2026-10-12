@@ -13,9 +13,10 @@ Status: database, login, timeline, patient page, My queue, Patients list, and Ad
 - `supabase/migrations/0003_views_audit_access.sql`: what the screens read, the audit log, and who can do what
 - `supabase/migrations/0004_program_templates.sql`: FHE, Protocol I, Two-Step, Protocol II
 - `supabase/migrations/0005_login_link.sql`: links logins to the staff list, sets the clock to Eastern time
-- `supabase/migrations/0006_patient_names_dob.sql`: first name, last name, date of birth, automatic patient ID, duplicate check
+- `supabase/migrations/0006_patient_names_dob.sql`: interim step (names and birth dates), superseded by 0007
+- `supabase/migrations/0007_patient_codes.sql`: patients identified by code only (Mike Smith 1994 is MSMI94); names and birth dates removed
 - `supabase/seed.sql`: fake patients and staff only
-- `tests/run-tests.mjs`: 70 checks run against a throwaway database
+- `tests/run-tests.mjs`: 72 checks run against a throwaway database
 
 ## Run locally
 
