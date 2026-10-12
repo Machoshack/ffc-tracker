@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getCurrentStaff } from '@/lib/supabase/server';
 
-export type FormState = { error?: string };
+export type FormState = { error?: string; existingId?: string; values?: Record<string, string> };
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const PROGRAMS = ['TS', 'FHE', 'P1', 'P2'];
@@ -12,7 +12,7 @@ const PROGRAMS = ['TS', 'FHE', 'P1', 'P2'];
 function friendly(message: string): string {
   if (/one_open_enrollment_per_patient/.test(message))
     return 'This patient already has an active program. Finish, pause, or cancel it first.';
-  if (/patient_patient_code_key/.test(message)) return 'That patient code is already in use.';
+  if (/patient_same_person/.test(message)) return 'A patient with this name and date of birth already exists.';
   if (/Upgrade window closed on (\S+)/.test(message))
     return `The one-month upgrade window closed on ${message.match(/closed on (\S+)/)![1]}.`;
   if (/Not an active staff account|Login required/.test(message)) return 'You are not logged in as staff.';
@@ -36,19 +36,39 @@ function readEnrollment(form: FormData) {
 }
 
 // New patient + first program in one go.
-export async function createPatient(_prev: FormState, form: FormData): Promise<FormState> {
+export async function createPatient(prev: FormState, form: FormData): Promise<FormState> {
+  const r = await createPatientInner(form);
+  return { ...r, values: Object.fromEntries([...form.entries()].map(([k, v]) => [k, String(v)])) };
+}
+
+async function createPatientInner(form: FormData): Promise<FormState> {
   const { supabase, staff } = await getCurrentStaff();
   if (!staff) return { error: 'You are not logged in as staff.' };
 
-  const name = String(form.get('display_name') ?? '').trim();
-  const code = String(form.get('patient_code') ?? '').trim().toUpperCase();
-  if (!name) return { error: 'Enter a name.' };
-  if (!code) return { error: 'Enter a patient code.' };
+  const first = String(form.get('first_name') ?? '').trim();
+  const last = String(form.get('last_name') ?? '').trim();
+  const dob = String(form.get('date_of_birth') ?? '');
+  if (!first || !last) return { error: 'Enter first and last name.' };
+  if (!ISO_DATE.test(dob)) return { error: 'Enter a date of birth.' };
   const e = readEnrollment(form);
   if ('error' in e) return { error: e.error };
 
+  // Returning patient? Point to their existing record instead of making a second one.
+  const { data: match } = await supabase
+    .from('patient').select('id')
+    .ilike('first_name', first).ilike('last_name', last).eq('date_of_birth', dob)
+    .maybeSingle();
+  if (match) {
+    return {
+      error: `${first} ${last} with this date of birth is already a patient. Open their page and use Start a program.`,
+      existingId: match.id,
+    };
+  }
+
   const { data: patient, error } = await supabase
-    .from('patient').insert({ display_name: name, patient_code: code }).select('id').single();
+    .from('patient')
+    .insert({ first_name: first, last_name: last, date_of_birth: dob, display_name: `${first} ${last}` })
+    .select('id').single();
   if (error) return { error: friendly(error.message) };
 
   const { error: enrollError } = await supabase.rpc('enroll_patient', {
@@ -65,7 +85,12 @@ export async function createPatient(_prev: FormState, form: FormData): Promise<F
 }
 
 // Existing patient starting a new program.
-export async function enrollExisting(patientId: string, _prev: FormState, form: FormData): Promise<FormState> {
+export async function enrollExisting(patientId: string, prev: FormState, form: FormData): Promise<FormState> {
+  const r = await enrollExistingInner(patientId, form);
+  return { ...r, values: Object.fromEntries([...form.entries()].map(([k, v]) => [k, String(v)])) };
+}
+
+async function enrollExistingInner(patientId: string, form: FormData): Promise<FormState> {
   const { supabase, staff } = await getCurrentStaff();
   if (!staff) return { error: 'You are not logged in as staff.' };
   const e = readEnrollment(form);

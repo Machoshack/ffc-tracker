@@ -7,10 +7,11 @@ export type ProgramOption = { code: string; name: string; price: number };
 const input = 'w-full rounded border border-line bg-white px-3 py-2 outline-none focus:border-brand';
 
 // Program, start date and payment. Used by Add patient and Start a program.
-export function EnrollFields({ programs, defaultStart, today }: {
+export function EnrollFields({ programs, defaultStart, today, defaultPaidDate }: {
   programs: ProgramOption[];
   defaultStart: string;
   today: string;
+  defaultPaidDate?: string;
 }) {
   const [program, setProgram] = useState('');
   const [paid, setPaid] = useState('');
@@ -47,7 +48,7 @@ export function EnrollFields({ programs, defaultStart, today }: {
         </label>
         <label className="text-sm">
           <span className="mb-1 block font-medium">Paid on</span>
-          <input type="date" name="paid_date" defaultValue={today} max={today} className={input} />
+          <input type="date" name="paid_date" defaultValue={defaultPaidDate ?? today} max={today} className={input} />
         </label>
       </div>
     </>

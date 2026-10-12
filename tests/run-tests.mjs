@@ -329,5 +329,31 @@ console.log('\nLinking logins to the staff list');
   check('A login not on the staff list is not linked to anyone', n.n === 2);
 }
 
+// ---------------------------------------------------------------------------
+console.log('\nPatient names, birth dates, IDs');
+{
+  const db = await freshDb({ seed: true });
+  const p = await one(db, `insert into patient (first_name, last_name, date_of_birth)
+                           values (' Maria ', 'Lopez', '1982-05-01') returning patient_code, display_name, first_name`);
+  check('New patients get an automatic ID', /^FFC-\d{4}$/.test(p.patient_code), `(got ${p.patient_code})`);
+  check('Display name is built from first and last name', p.display_name === 'Maria Lopez', `(got ${p.display_name})`);
+  check('Extra spaces are trimmed', p.first_name === 'Maria');
+  let dup = '';
+  try { await db.query(`insert into patient (first_name, last_name, date_of_birth) values ('maria', 'LOPEZ', '1982-05-01')`); }
+  catch (e) { dup = e.message; }
+  check('The same name and birth date cannot be added twice', /patient_same_person/.test(dup), `(got ${dup})`);
+  await db.query(`insert into patient (first_name, last_name, date_of_birth) values ('Maria', 'Lopez', '1990-01-01')`);
+  check('Same name with a different birth date is allowed', true);
+  const seeded = await one(db, `select first_name, last_name, display_name, date_of_birth from patient where patient_code = 'T-1003'`);
+  check('Fake patients have first name, last name and birth date', seeded.first_name === 'Casey' && seeded.display_name === 'Casey Demo' && !!seeded.date_of_birth);
+
+  // One program, then another
+  const pid = (await one(db, `select id from patient where patient_code = 'T-1006'`)).id;
+  await db.query(`update enrollment set status = 'completed', completed_on = current_date where patient_id = $1`, [pid]);
+  const next = await one(db, `select enroll_patient($1, 'FHE', current_date + 2, 950) as id`, [pid]);
+  const count = await one(db, `select count(*)::int as n from enrollment where patient_id = $1`, [pid]);
+  check('A patient can start a new program after finishing one', !!next.id && count.n === 2);
+}
+
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed ? 1 : 0);

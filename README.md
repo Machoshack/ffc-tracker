@@ -2,7 +2,7 @@
 
 Internal app for Fresh Fit Consulting to track patients through programs, steps owed, P1 supplement budgets and margin, and device rentals.
 
-Status: database, login, timeline, patient page, My queue, and Add patient are built. More screens come next.
+Status: database, login, timeline, patient page, My queue, Patients list, and Add patient are built. More screens come next.
 
 ## What's here
 
@@ -13,8 +13,9 @@ Status: database, login, timeline, patient page, My queue, and Add patient are b
 - `supabase/migrations/0003_views_audit_access.sql`: what the screens read, the audit log, and who can do what
 - `supabase/migrations/0004_program_templates.sql`: FHE, Protocol I, Two-Step, Protocol II
 - `supabase/migrations/0005_login_link.sql`: links logins to the staff list, sets the clock to Eastern time
+- `supabase/migrations/0006_patient_names_dob.sql`: first name, last name, date of birth, automatic patient ID, duplicate check
 - `supabase/seed.sql`: fake patients and staff only
-- `tests/run-tests.mjs`: 63 checks run against a throwaway database
+- `tests/run-tests.mjs`: 70 checks run against a throwaway database
 
 ## Run locally
 

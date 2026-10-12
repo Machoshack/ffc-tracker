@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getCurrentStaff } from '@/lib/supabase/server';
-import { todayInNewYork, weekdayDate } from '@/lib/dates';
+import { longDate, todayInNewYork, weekdayDate } from '@/lib/dates';
 import { StepRow, type StepView } from './StepRow';
 import { UpgradeBox } from './UpgradeBox';
 
@@ -51,7 +51,7 @@ export default async function PatientPage({
   const { supabase } = await getCurrentStaff();
 
   const { data: patient } = await supabase
-    .from('patient').select('id, patient_code, display_name').eq('id', id).maybeSingle();
+    .from('patient').select('id, patient_code, display_name, date_of_birth').eq('id', id).maybeSingle();
   if (!patient) notFound();
 
   await supabase.rpc('log_view', { p_record_type: 'patient', p_record_id: id });
@@ -118,7 +118,9 @@ export default async function PatientPage({
       <div className="mt-2 mb-5 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">{patient.display_name}</h1>
-          <p className="text-sm text-muted">{patient.patient_code}</p>
+          <p className="text-sm text-muted">
+            {patient.date_of_birth ? `Born ${longDate(patient.date_of_birth)} · ` : ''}ID {patient.patient_code}
+          </p>
         </div>
         {!hasOpenProgram && (
           <Link href={`/patients/new?patient=${id}`} className="rounded bg-brand px-3 py-1.5 text-sm font-medium text-white">

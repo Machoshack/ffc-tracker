@@ -8,11 +8,13 @@ insert into staff_user (name, role) values
   ('Clinical Tester',    'staff'),
   ('Intern Tester',      'staff');
 
-insert into patient (patient_code, display_name) values
-  ('T-1001', 'Avery Test'),   ('T-1002', 'Blake Sample'), ('T-1003', 'Casey Demo'),
-  ('T-1004', 'Drew Fake'),    ('T-1005', 'Emery Mock'),   ('T-1006', 'Finley Test'),
-  ('T-1007', 'Gray Sample'),  ('T-1008', 'Harper Demo'),  ('T-1009', 'Indy Fake'),
-  ('T-1010', 'Jules Mock'),   ('T-1011', 'Kai Test'),     ('T-1012', 'Lane Sample');
+insert into patient (patient_code, first_name, last_name, date_of_birth) values
+  ('T-1001', 'Avery',   'Test',   '1978-03-14'), ('T-1002', 'Blake',  'Sample', '1985-07-02'),
+  ('T-1003', 'Casey',   'Demo',   '1969-11-23'), ('T-1004', 'Drew',   'Fake',   '1991-01-30'),
+  ('T-1005', 'Emery',   'Mock',   '1974-09-09'), ('T-1006', 'Finley', 'Test',   '1988-05-17'),
+  ('T-1007', 'Gray',    'Sample', '1963-12-04'), ('T-1008', 'Harper', 'Demo',   '1980-08-21'),
+  ('T-1009', 'Indy',    'Fake',   '1995-02-11'), ('T-1010', 'Jules',  'Mock',   '1972-06-28'),
+  ('T-1011', 'Kai',     'Test',   '1983-10-15'), ('T-1012', 'Lane',   'Sample', '1990-04-06');
 
 do $$
 declare

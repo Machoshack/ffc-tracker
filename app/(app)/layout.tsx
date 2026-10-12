@@ -4,7 +4,7 @@ import { getCurrentStaff } from '@/lib/supabase/server';
 const NAV = [
   { href: '/', label: 'Timeline' },
   { href: '/queue', label: 'My queue' },
-  { href: '/patients/new', label: 'Add patient' },
+  { href: '/patients', label: 'Patients' },
   // More screens are added here as they're built: Pipeline, Dashboard, P1 margin, Devices, Settings.
 ];
 

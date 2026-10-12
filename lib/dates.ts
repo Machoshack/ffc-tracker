@@ -30,3 +30,7 @@ export function shortDate(iso: string): string {
 export function weekdayDate(iso: string): string {
   return toDate(iso).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
 }
+
+export function longDate(iso: string): string {
+  return toDate(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+}
