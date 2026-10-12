@@ -1,0 +1,302 @@
+// Runs the migrations and seed on a throwaway in-memory Postgres and checks the rules.
+// Usage: node tests/run-tests.mjs
+import { PGlite } from '@electric-sql/pglite';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+const read = (p) => readFileSync(join(root, p), 'utf8');
+
+// Stand-ins for what Supabase provides: the auth schema and login roles.
+const SUPABASE_STUBS = `
+  create role anon nologin; create role authenticated nologin; create role authenticator nologin;
+  create schema auth;
+  create table auth.users (id uuid primary key default gen_random_uuid(), email text);
+  create function auth.uid() returns uuid language sql stable as $$
+    select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
+  grant usage on schema auth to authenticated, anon;
+  grant execute on function auth.uid() to authenticated, anon;
+`;
+
+let passed = 0, failed = 0;
+function check(name, cond, detail = '') {
+  if (cond) { passed++; console.log(`  ok    ${name}`); }
+  else { failed++; console.log(`  FAIL  ${name} ${detail}`); }
+}
+async function expectError(db, name, sql, match) {
+  try { await db.exec(sql); check(name, false, '(no error raised)'); }
+  catch (e) { check(name, match.test(e.message), `(got: ${e.message})`); }
+}
+
+async function freshDb({ seed = false } = {}) {
+  const db = new PGlite();
+  await db.exec(SUPABASE_STUBS);
+  for (const f of readdirSync(join(root, 'supabase/migrations')).sort()) {
+    await db.exec(read(`supabase/migrations/${f}`));
+  }
+  if (seed) await db.exec(read('supabase/seed.sql'));
+  return db;
+}
+const one = async (db, sql, params) => (await db.query(sql, params)).rows[0];
+const rows = async (db, sql, params) => (await db.query(sql, params)).rows;
+const iso = (d) => (d instanceof Date ? d.toISOString().slice(0, 10) : d);
+
+async function stepDue(db, enrollment, key) {
+  const r = await one(db, `select s.due_date, s.status from step s join step_template t on t.id = s.template_id
+                           where s.enrollment_id = $1 and t.key = $2`, [enrollment, key]);
+  return iso(r.due_date);
+}
+async function setStep(db, enrollment, key, status, completedOn) {
+  await db.query(`update step s set status = $3, completed_on = $4::date from step_template t
+                  where t.id = s.template_id and s.enrollment_id = $1 and t.key = $2`,
+                 [enrollment, key, status, completedOn ?? null]);
+}
+const setStepSql = (e, key, status, on) =>
+  `update step s set status = '${status}'${on ? `, completed_on = '${on}'` : ''} from step_template t
+   where t.id = s.template_id and s.enrollment_id = '${e}' and t.key = '${key}'`;
+
+// ---------------------------------------------------------------------------
+console.log('\nClinic-day snapping');
+{
+  const db = await freshDb();
+  // Mon 10/12/2026 through Sun 10/18/2026
+  const expect = { '2026-10-12': '2026-10-12', '2026-10-13': '2026-10-14', '2026-10-14': '2026-10-14',
+                   '2026-10-15': '2026-10-16', '2026-10-16': '2026-10-16', '2026-10-17': '2026-10-16',
+                   '2026-10-18': '2026-10-19' };
+  for (const [d, want] of Object.entries(expect)) {
+    const r = await one(db, `select snap_clinic_day($1::date) as d`, [d]);
+    check(`${d} snaps to ${want}`, iso(r.d) === want, `(got ${iso(r.d)})`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+console.log('\nFHE enrollment, blocks, and shifting');
+{
+  const db = await freshDb();
+  const pid = (await one(db, `insert into patient (patient_code, display_name) values ('X1','Test') returning id`)).id;
+  const e = (await one(db, `select enroll_patient($1, 'FHE', '2026-10-12', 950) as id`, [pid])).id;
+
+  const n = await one(db, `select count(*)::int as n from step where enrollment_id = $1`, [e]);
+  check('FHE creates 14 steps', n.n === 14, `(got ${n.n})`);
+  check('Visit 1 due Mon 10/12', await stepDue(db, e, 'fhe_v1_bloodwork') === '2026-10-12');
+  check('Visit 2 due Mon 10/19 (day 7)', await stepDue(db, e, 'fhe_v2_bodycomp') === '2026-10-19');
+  check('Results consult due Fri 11/6 (day 24 is a Thursday)',
+        ['2026-11-06'].includes(await stepDue(db, e, 'fhe_v3_consult')),
+        `(got ${await stepDue(db, e, 'fhe_v3_consult')})`);
+
+  await expectError(db, 'Results consult blocked until scores are done',
+    setStepSql(e, 'fhe_v3_consult', 'done'), /BLOCKED.*Vitality score.*Lab score.*Sleep score/);
+  await expectError(db, 'Grip strength blocked until body composition is done',
+    setStepSql(e, 'fhe_v2_grip', 'done'), /BLOCKED.*Body composition/);
+  await expectError(db, 'Results consult cannot even be started early',
+    setStepSql(e, 'fhe_v3_consult', 'in_progress'), /BLOCKED/);
+
+  // Visit 1 on time
+  for (const k of ['fhe_v1_bloodwork', 'fhe_v1_metabolomics', 'fhe_v1_omegaquant'])
+    await setStep(db, e, k, 'done', '2026-10-12');
+  const before = await stepDue(db, e, 'fhe_v3_consult');
+  check('On-time Visit 1 does not move anything', before === '2026-11-06');
+
+  // Visit 2 happens 5 days late (Sat 10/24 -> treat as Fri 10/23, 4 days late). All four items same day.
+  await setStep(db, e, 'fhe_v2_eeg_pickup', 'done', '2026-10-23');
+  await setStep(db, e, 'fhe_v2_bodycomp',   'done', '2026-10-23');
+  await setStep(db, e, 'fhe_v2_grip',       'done', '2026-10-23');
+  await setStep(db, e, 'fhe_v2_bolt',       'done', '2026-10-23');
+  const sh = await one(db, `select shift_days from enrollment where id = $1`, [e]);
+  check('Four late Visit 2 items shift the plan once (4 days), not four times', sh.shift_days === 4,
+        `(got ${sh.shift_days})`);
+  check('Vitality score moved from 10/23 to 10/26', await stepDue(db, e, 'fhe_vitality_score') === '2026-10-26',
+        `(got ${await stepDue(db, e, 'fhe_vitality_score')})`);
+  check('Results consult moved from 11/6 to 11/9 (Mon)', await stepDue(db, e, 'fhe_v3_consult') === '2026-11-09',
+        `(got ${await stepDue(db, e, 'fhe_v3_consult')})`);
+
+  // Rebooking: physician pushes Lab score out a week; consult moves with it.
+  await db.query(`update step s set due_date = '2026-11-09' from step_template t
+                  where t.id = s.template_id and s.enrollment_id = $1 and t.key = 'fhe_lab_score'`, [e]);
+  check('Rebooking Lab score a week later pushes the results consult',
+        await stepDue(db, e, 'fhe_v3_consult') > '2026-11-09',
+        `(got ${await stepDue(db, e, 'fhe_v3_consult')})`);
+
+  // Finish everything, consult allowed, enrollment closes
+  for (const k of ['fhe_eeg_returned', 'fhe_vitality_score', 'fhe_lab_score', 'fhe_sleep_score',
+                   'fhe_cover_sheet', 'fhe_packet'])
+    await setStep(db, e, k, 'done', '2026-11-09');
+  await setStep(db, e, 'fhe_v3_consult', 'done', '2026-11-13');
+  const en = await one(db, `select status, completed_on from enrollment where id = $1`, [e]);
+  check('Enrollment closes itself when the last step is done', en.status === 'completed', `(got ${en.status})`);
+  check('Completion date is the last step date', iso(en.completed_on) === '2026-11-13');
+
+  // Upgrade to P2 after completion (window is checked against today, so move completion to today)
+  await db.query(`update enrollment set completed_on = current_date - 10 where id = $1`, [e]);
+  const p2 = (await one(db, `select convert_enrollment($1, 700) as id`, [e])).id;
+  const p2e = await one(db, `select amount_paid, status, shift_days from enrollment where id = $1`, [p2]);
+  check('Upgrade credits FHE payment ($950 + $700 = $1,650)', Number(p2e.amount_paid) === 1650,
+        `(got ${p2e.amount_paid})`);
+  const carried = await one(db, `select count(*)::int as n from step where enrollment_id = $1 and status = 'done'`, [p2]);
+  check('All 14 finished FHE steps carry over to P2', carried.n === 14, `(got ${carried.n})`);
+  const old = await one(db, `select status from enrollment where id = $1`, [e]);
+  check('FHE enrollment marked converted', old.status === 'converted');
+  const c1 = await stepDue(db, p2, 'p2_consult1');
+  check('P2 Consultation 1 lands about 3 months after start, adjusted for delays', c1 > '2027-01-10' && c1 < '2027-02-15',
+        `(got ${c1})`);
+}
+
+// ---------------------------------------------------------------------------
+console.log('\nUpgrade window and one-program rule');
+{
+  const db = await freshDb();
+  const pid = (await one(db, `insert into patient (patient_code, display_name) values ('X2','Test') returning id`)).id;
+  const e = (await one(db, `select enroll_patient($1, 'FHE', current_date - 80, 950) as id`, [pid])).id;
+  await expectError(db, 'Second open program for the same patient is refused',
+    `select enroll_patient('${pid}', 'P1', current_date, 3000)`, /one_open_enrollment_per_patient/);
+  await db.query(`update enrollment set status = 'completed', completed_on = current_date - 40 where id = $1`, [e]);
+  await expectError(db, 'Upgrade refused after the 31-day window',
+    `select convert_enrollment('${e}', 700)`, /Upgrade window closed/);
+  await expectError(db, 'P1 has no upgrade path',
+    `select convert_enrollment((select enroll_patient('${pid}', 'P1', current_date, 3000)), 0)`, /no upgrade path/);
+}
+
+// ---------------------------------------------------------------------------
+console.log('\nP1 supplements, budget and margin');
+{
+  const db = await freshDb();
+  const pid = (await one(db, `insert into patient (patient_code, display_name) values ('X3','Test') returning id`)).id;
+  const e = (await one(db, `select enroll_patient($1, 'P1', '2026-10-12', 3000) as id`, [pid])).id;
+
+  check('Consultation 1 due week 4 (Mon 11/9)', await stepDue(db, e, 'p1_consult1') === '2026-11-09');
+  check('Consultation 4 due week 24 (Mon 3/29/2027)', await stepDue(db, e, 'p1_consult4') === '2027-03-29');
+  await setStep(db, e, 'p1_test1_ordered', 'done', '2026-10-12');
+  await expectError(db, 'Consultation 1 blocked until Test 1 results are in',
+    setStepSql(e, 'p1_consult1', 'done'), /BLOCKED.*Test 1 results/);
+
+  await db.query(`insert into supplement_log (enrollment_id, item, retail_price) values ($1, 'Item A', 400)`, [e]);
+  const s = await one(db, `select wholesale_cost from supplement_log where enrollment_id = $1`, [e]);
+  check('Wholesale fills in at 50% of retail ($400 -> $200)', Number(s.wholesale_cost) === 200);
+
+  const ok = await one(db, `select * from supplement_check($1, 300)`, [e]);
+  check('Adding $300 retail leaves $250 of $600', Number(ok.remaining_after) === 250 && !ok.over_budget);
+  const over = await one(db, `select * from supplement_check($1, 900)`, [e]);
+  check('Adding $900 retail warns: over budget by $50', over.over_budget && Number(over.remaining_after) === -50);
+
+  await db.query(`insert into test_cost_log (enrollment_id, test_name, cost) values ($1, 'GI-MAP', 450), ($1, 'OAT', 380)`, [e]);
+  const m = await one(db, `select * from v_p1_margin where enrollment_id = $1`, [e]);
+  // 3000 - 1200 - 200 - 830 - 200 = 570
+  check('Margin = 3000 - 1200 consults - 200 staff - 830 tests - 200 supplements = $570',
+        Number(m.margin) === 570, `(got ${m.margin})`);
+}
+
+// ---------------------------------------------------------------------------
+console.log('\nTwo-Step and P2 templates');
+{
+  const db = await freshDb();
+  const pid = (await one(db, `insert into patient (patient_code, display_name) values ('X4','Test') returning id`)).id;
+  const e = (await one(db, `select enroll_patient($1, 'TS', '2026-10-14', 495) as id`, [pid])).id;
+  await expectError(db, 'Session 1 blocked until payment is collected',
+    setStepSql(e, 'ts_session1', 'done'), /BLOCKED.*Payment collected/);
+  check('Session 2 due a week after Session 1 (Wed 10/21)', await stepDue(db, e, 'ts_session2') === '2026-10-21');
+
+  const pid2 = (await one(db, `insert into patient (patient_code, display_name) values ('X5','Test') returning id`)).id;
+  const p2 = (await one(db, `select enroll_patient($1, 'P2', '2026-10-12', 1650) as id`, [pid2])).id;
+  const n = await one(db, `select count(*)::int as n from step where enrollment_id = $1`, [p2]);
+  check('P2 creates 14 FHE steps + 3 consultations', n.n === 17);
+  check('P2 consults at months 3, 6, 9',
+    [await stepDue(db, p2, 'p2_consult1'), await stepDue(db, p2, 'p2_consult2'), await stepDue(db, p2, 'p2_consult3')]
+      .join() === '2027-01-11,2027-04-12,2027-07-12',
+    `(got ${[await stepDue(db, p2, 'p2_consult1'), await stepDue(db, p2, 'p2_consult2'), await stepDue(db, p2, 'p2_consult3')]})`);
+}
+
+// ---------------------------------------------------------------------------
+console.log('\nFake data, screens, audit log, and access rules');
+{
+  const db = await freshDb({ seed: true });
+  const en = await rows(db, `select patient_code, program_code, current_stage, days_in_stage, overdue_steps
+                             from v_enrollments where status = 'active' order by patient_code`);
+  check('Fake data loads 10 active enrollments', en.length === 10, `(got ${en.length})`);
+  console.table(en);
+
+  const t1002 = await one(db, `select shift_days from enrollment e join patient p on p.id = e.patient_id
+                               where p.patient_code = 'T-1002'`);
+  check('T-1002 late Visit 2 shifted plan by 2 days', t1002.shift_days === 2, `(got ${t1002.shift_days})`);
+
+  const margin = await rows(db, `select patient_code, fee, test_costs, supplement_cost, supplement_remaining, margin
+                                 from v_p1_margin order by patient_code`);
+  console.table(margin);
+  check('P1 margin view has 3 patients', margin.length === 3);
+
+  const dev = await rows(db, `select patient_code, device_type, rental_status from v_devices order by patient_code`);
+  console.table(dev);
+  check('One Firstbeat and one sleep EEG are overdue', dev.filter((d) => d.rental_status === 'overdue').length === 2);
+
+  const audit = await one(db, `select count(*)::int as n from audit_log`);
+  check('Audit log recorded changes', audit.n > 100, `(got ${audit.n})`);
+
+  // Access rules
+  const admin = (await one(db, `select id from staff_user where name = 'Admin Tester'`)).id;
+  const staff = (await one(db, `select id from staff_user where name = 'Front Desk Tester'`)).id;
+  const adminLogin = '11111111-1111-1111-1111-111111111111';
+  const staffLogin = '22222222-2222-2222-2222-222222222222';
+  const strangerLogin = '33333333-3333-3333-3333-333333333333';
+  await db.query(`update staff_user set auth_user_id = $1 where id = $2`, [adminLogin, admin]);
+  await db.query(`update staff_user set auth_user_id = $1 where id = $2`, [staffLogin, staff]);
+
+  const as = async (login, fn) => {
+    await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub', '${login}', false);`);
+    try { return await fn(); } finally { await db.exec(`reset role; select set_config('request.jwt.claim.sub', '', false);`); }
+  };
+
+  const seen = await as(staffLogin, () => one(db, `select count(*)::int as n from patient`));
+  check('Staff can see patients', seen.n === 12);
+  const hidden = await as(strangerLogin, () => one(db, `select count(*)::int as n from patient`));
+  check('A login that is not on the staff list sees nothing', hidden.n === 0);
+
+  await as(staffLogin, () => db.query(`update program set price = 1 where code = 'FHE'`));
+  const price = await one(db, `select price from program where code = 'FHE'`);
+  check('Staff cannot change program prices', Number(price.price) === 950);
+
+  await as(adminLogin, () => db.query(`update program set supplement_budget = 650 where code = 'P1'`));
+  const budget = await one(db, `select supplement_budget from program where code = 'P1'`);
+  check('Admin can change the P1 supplement budget', Number(budget.supplement_budget) === 650);
+
+  const pid = (await one(db, `select id from patient where patient_code = 'T-1011'`)).id;
+  const eid = await as(staffLogin, () => one(db, `select enroll_patient($1, 'TS', current_date + 3, 495) as id`, [pid]));
+  check('Staff can enroll a patient', !!eid.id);
+  const who = await one(db, `select s.name from audit_log a join staff_user s on s.id = a.staff_user_id
+                             where a.record_type = 'enrollment' and a.record_id = $1`, [eid.id]);
+  check('Audit log names who did it', who?.name === 'Front Desk Tester', `(got ${who?.name})`);
+
+  let blocked = false;
+  try { await as(strangerLogin, () => db.query(`select enroll_patient($1, 'TS', current_date, 495)`, [pid])); }
+  catch (e) { blocked = /Not an active staff account/.test(e.message); }
+  check('A login that is not on the staff list cannot enroll anyone', blocked);
+
+  await as(staffLogin, () => db.query(`delete from patient where patient_code = 'T-1012'`));
+  const still = await one(db, `select count(*)::int as n from patient where patient_code = 'T-1012'`);
+  check('Staff cannot delete records', still.n === 1);
+
+  await as(staffLogin, () => db.query(`delete from audit_log`).catch(() => {}));
+  const kept = await one(db, `select count(*)::int as n from audit_log`);
+  check('Nobody can erase the audit log', kept.n > 100);
+}
+
+// ---------------------------------------------------------------------------
+console.log('\nLinking logins to the staff list');
+{
+  const db = await freshDb();
+  const u = (await one(db, `insert into auth.users (email) values ('Alan.Macioszek@gmail.com') returning id`)).id;
+  const alan = await one(db, `select auth_user_id, role from staff_user where email = 'alan.macioszek@gmail.com'`);
+  check('A new login is linked to the matching staff row (email case ignored)', alan.auth_user_id === u);
+  check('Alan is set up as admin', alan.role === 'admin');
+
+  const v = (await one(db, `insert into auth.users (email) values ('newhire@example.com') returning id`)).id;
+  await db.query(`insert into staff_user (name, role, email) values ('New Hire', 'staff', 'newhire@example.com')`);
+  const hire = await one(db, `select auth_user_id from staff_user where email = 'newhire@example.com'`);
+  check('Adding a staff row for someone who already has a login links it', hire.auth_user_id === v);
+
+  await db.query(`insert into auth.users (email) values ('stranger@example.com')`);
+  const n = await one(db, `select count(*)::int as n from staff_user where auth_user_id is not null`);
+  check('A login not on the staff list is not linked to anyone', n.n === 2);
+}
+
+console.log(`\n${passed} passed, ${failed} failed\n`);
+process.exit(failed ? 1 : 0);
