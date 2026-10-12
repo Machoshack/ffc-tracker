@@ -64,6 +64,15 @@ export async function addTestCost(
   if (!Number.isFinite(cost) || cost < 0) return { error: 'Enter what the test cost the practice.' };
   if (!ISO_DATE.test(date)) return { error: 'Pick a date.' };
 
+  // Testing budget check, same as supplements.
+  if (form.get('approve_over') !== '1') {
+    const { data: m } = await supabase.from('v_p1_margin')
+      .select('test_budget, test_remaining').eq('enrollment_id', enrollmentId).maybeSingle();
+    if (m?.test_budget != null && Number(m.test_remaining) - cost < 0) {
+      return { needsApproval: { overBy: Math.abs(Number(m.test_remaining) - cost) } };
+    }
+  }
+
   const { error } = await supabase.from('test_cost_log').insert({
     enrollment_id: enrollmentId, test_name: name, cost, logged_on: date,
   });

@@ -15,6 +15,8 @@ type Row = {
   supplement_budget: number;
   supplement_remaining: number;
   margin: number;
+  test_budget: number | null;
+  test_remaining: number | null;
 };
 
 const usd = (n: number) => `${n < 0 ? '-' : ''}$${Math.abs(Math.round(n)).toLocaleString()}`;
@@ -26,7 +28,7 @@ export default async function MarginPage({ searchParams }: { searchParams: Promi
 
   let q = supabase
     .from('v_p1_margin')
-    .select('enrollment_id, patient_code, status, start_date, fee, consult_cost, staff_time_cost, test_costs, supplement_cost, supplement_budget, supplement_remaining, margin')
+    .select('enrollment_id, patient_code, status, start_date, fee, consult_cost, staff_time_cost, test_costs, supplement_cost, supplement_budget, supplement_remaining, margin, test_budget, test_remaining')
     .order('margin');
   if (show === 'active') q = q.in('status', ['active', 'paused']);
   const { data, error } = await q;
@@ -41,7 +43,7 @@ export default async function MarginPage({ searchParams }: { searchParams: Promi
   const patientOf = new Map((links ?? []).map((l) => [l.id, l.patient_id]));
 
   const total = (k: keyof Row) => rows.reduce((n, r) => n + Number(r[k]), 0);
-  const overBudget = rows.filter((r) => r.supplement_remaining < 0).length;
+  const overBudget = rows.filter((r) => r.supplement_remaining < 0 || Number(r.test_remaining) < 0).length;
 
   return (
     <div>
@@ -49,7 +51,7 @@ export default async function MarginPage({ searchParams }: { searchParams: Promi
         <div>
           <h1 className="text-xl font-semibold">Protocol I margin</h1>
           <p className="text-sm text-muted">
-            Fee minus consults, staff time, tests and supplements (at wholesale). Lowest margin first.
+            Fee minus consults and staff, tests, and supplements (at wholesale). Lowest margin first.
           </p>
         </div>
         <nav className="flex gap-1 text-sm">
@@ -69,11 +71,11 @@ export default async function MarginPage({ searchParams }: { searchParams: Promi
           ['Patients', String(rows.length)],
           ['Total margin', usd(total('margin'))],
           ['Average margin', rows.length ? usd(total('margin') / rows.length) : '-'],
-          ['Over supplement budget', String(overBudget)],
+          ['Over a budget', String(overBudget)],
         ].map(([k, v]) => (
           <div key={k} className="bg-white px-3 py-2">
             <div className="text-xs text-muted">{k}</div>
-            <div className={`text-lg font-semibold ${k === 'Over supplement budget' && overBudget ? 'text-late' : ''}`}>{v}</div>
+            <div className={`text-lg font-semibold ${k === 'Over a budget' && overBudget ? 'text-late' : ''}`}>{v}</div>
           </div>
         ))}
       </section>
@@ -88,11 +90,11 @@ export default async function MarginPage({ searchParams }: { searchParams: Promi
                 <th className="px-3 py-2 font-medium">Patient</th>
                 <th className="px-3 py-2 font-medium">Started</th>
                 <th className="px-3 py-2 text-right font-medium">Fee</th>
-                <th className="px-3 py-2 text-right font-medium">Consults</th>
-                <th className="px-3 py-2 text-right font-medium">Staff</th>
+                <th className="px-3 py-2 text-right font-medium">Consults and staff</th>
                 <th className="px-3 py-2 text-right font-medium">Tests</th>
+                <th className="px-3 py-2 text-right font-medium">Testing left</th>
                 <th className="px-3 py-2 text-right font-medium">Supplements</th>
-                <th className="px-3 py-2 text-right font-medium">Budget left</th>
+                <th className="px-3 py-2 text-right font-medium">Supplements left</th>
                 <th className="px-3 py-2 text-right font-medium">Margin</th>
               </tr>
             </thead>
@@ -107,9 +109,11 @@ export default async function MarginPage({ searchParams }: { searchParams: Promi
                   </td>
                   <td className="px-3 py-2 text-muted">{weekdayDate(r.start_date)}</td>
                   <td className="px-3 py-2 text-right">{usd(r.fee)}</td>
-                  <td className="px-3 py-2 text-right text-muted">{usd(r.consult_cost)}</td>
-                  <td className="px-3 py-2 text-right text-muted">{usd(r.staff_time_cost)}</td>
+                  <td className="px-3 py-2 text-right text-muted">{usd(r.consult_cost + r.staff_time_cost)}</td>
                   <td className="px-3 py-2 text-right">{usd(r.test_costs)}</td>
+                  <td className={`px-3 py-2 text-right ${Number(r.test_remaining) < 0 ? 'font-medium text-late' : ''}`}>
+                    {r.test_remaining == null ? '-' : usd(r.test_remaining)}
+                  </td>
                   <td className="px-3 py-2 text-right">{usd(r.supplement_cost)}</td>
                   <td className={`px-3 py-2 text-right ${r.supplement_remaining < 0 ? 'font-medium text-late' : ''}`}>
                     {usd(r.supplement_remaining)}
@@ -122,9 +126,9 @@ export default async function MarginPage({ searchParams }: { searchParams: Promi
               <tr>
                 <td className="px-3 py-2" colSpan={2}>Total</td>
                 <td className="px-3 py-2 text-right">{usd(total('fee'))}</td>
-                <td className="px-3 py-2 text-right">{usd(total('consult_cost'))}</td>
-                <td className="px-3 py-2 text-right">{usd(total('staff_time_cost'))}</td>
+                <td className="px-3 py-2 text-right">{usd(total('consult_cost') + total('staff_time_cost'))}</td>
                 <td className="px-3 py-2 text-right">{usd(total('test_costs'))}</td>
+                <td className="px-3 py-2 text-right">{usd(total('test_remaining'))}</td>
                 <td className="px-3 py-2 text-right">{usd(total('supplement_cost'))}</td>
                 <td className="px-3 py-2 text-right">{usd(total('supplement_remaining'))}</td>
                 <td className="px-3 py-2 text-right">{usd(total('margin'))}</td>

@@ -4,6 +4,8 @@ Internal app for Fresh Fit Consulting to track patients through programs, steps 
 
 Status: database, login, timeline, patient page, My queue, Patients list, Add patient, P1 supplements and tests, and P1 margin are built. More screens come next.
 
+See `BACKLOG.md` for decisions made but not built yet.
+
 ## What's here
 
 - `setup.sql`: everything below in one file, for pasting into the Supabase SQL Editor (rebuild with `npm run setup-sql`)
@@ -16,8 +18,9 @@ Status: database, login, timeline, patient page, My queue, Patients list, Add pa
 - `supabase/migrations/0006_patient_names_dob.sql`: interim step (names and birth dates), superseded by 0007
 - `supabase/migrations/0007_patient_codes.sql`: patients identified by code only (Mike Smith 1994 is MSMI94); names and birth dates removed
 - `supabase/migrations/0008_fake_patient_codes.sql`: gives the fake test patients MSMI94-style codes
+- `supabase/migrations/0009_p1_cost_model.sql`: P1 consults and staff $1,500, testing budget $900, supplements $600
 - `supabase/seed.sql`: fake patients and staff only
-- `tests/run-tests.mjs`: 79 checks run against a throwaway database
+- `tests/run-tests.mjs`: 80 checks run against a throwaway database
 
 ## Run locally
 

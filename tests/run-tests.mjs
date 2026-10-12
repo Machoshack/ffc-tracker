@@ -181,9 +181,11 @@ console.log('\nP1 supplements, budget and margin');
 
   await db.query(`insert into test_cost_log (enrollment_id, test_name, cost) values ($1, 'GI-MAP', 450), ($1, 'OAT', 380)`, [e]);
   const m = await one(db, `select * from v_p1_margin where enrollment_id = $1`, [e]);
-  // 3000 - 1200 - 200 - 830 - 200 = 570
-  check('Margin = 3000 - 1200 consults - 200 staff - 830 tests - 200 supplements = $570',
-        Number(m.margin) === 570, `(got ${m.margin})`);
+  // 3000 - 1500 - 830 - 200 = 470
+  check('Margin = 3000 - 1500 consults and staff - 830 tests - 200 supplements = $470',
+        Number(m.margin) === 470, `(got ${m.margin})`);
+  check('Testing budget is $900, with $70 left after $830 of tests', Number(m.test_budget) === 900 && Number(m.test_remaining) === 70,
+        `(got ${m.test_budget}, ${m.test_remaining})`);
 }
 
 // ---------------------------------------------------------------------------

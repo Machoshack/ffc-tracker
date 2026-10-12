@@ -116,7 +116,7 @@ export default async function PatientPage({
       supabase.from('test_cost_log').select('id, test_name, cost, logged_on')
         .eq('enrollment_id', current.enrollment_id).order('logged_on', { ascending: false }),
       supabase.from('v_p1_margin')
-        .select('fee, consult_cost, staff_time_cost, test_costs, supplement_cost, margin')
+        .select('fee, consult_cost, staff_time_cost, test_costs, supplement_cost, margin, test_budget')
         .eq('enrollment_id', current.enrollment_id).maybeSingle(),
     ]);
     p1 = {
@@ -127,7 +127,7 @@ export default async function PatientPage({
         given_by_name: (r.staff_user as unknown as { name: string } | null)?.name ?? null,
       })) as SupplementRow[],
       tests: (tst ?? []) as TestRow[],
-      margin: (m ?? { fee: current.amount_paid, consult_cost: 0, staff_time_cost: 0, test_costs: 0, supplement_cost: 0, margin: 0 }) as MarginRow,
+      margin: (m ?? { fee: current.amount_paid, consult_cost: 0, staff_time_cost: 0, test_costs: 0, supplement_cost: 0, margin: 0, test_budget: null }) as MarginRow,
     };
   }
 
