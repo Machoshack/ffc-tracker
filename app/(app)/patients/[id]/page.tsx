@@ -4,6 +4,7 @@ import { getCurrentStaff } from '@/lib/supabase/server';
 import { todayInNewYork, weekdayDate } from '@/lib/dates';
 import { StepRow, type StepView } from './StepRow';
 import { UpgradeBox } from './UpgradeBox';
+import { P1Panel, type MarginRow, type SupplementRow, type TestRow } from './P1Panel';
 
 type Enrollment = {
   enrollment_id: string;
@@ -48,7 +49,7 @@ export default async function PatientPage({
 }) {
   const { id } = await params;
   const { enrollment: chosen } = await searchParams;
-  const { supabase } = await getCurrentStaff();
+  const { supabase, staff } = await getCurrentStaff();
 
   const { data: patient } = await supabase
     .from('patient').select('id, patient_code').eq('id', id).maybeSingle();
@@ -104,6 +105,32 @@ export default async function PatientPage({
   const { data: p2 } = upgrade
     ? await supabase.from('program').select('price').eq('code', 'P2').maybeSingle()
     : { data: null };
+  // Protocol I: supplements, tests, budget and margin.
+  let p1: null | { budget: number; rate: number; supplements: SupplementRow[]; tests: TestRow[]; margin: MarginRow } = null;
+  if (current?.program_code === 'P1') {
+    const [{ data: prog }, { data: supp }, { data: tst }, { data: m }] = await Promise.all([
+      supabase.from('program').select('supplement_budget, wholesale_rate').eq('code', 'P1').single(),
+      supabase.from('supplement_log')
+        .select('id, item, retail_price, wholesale_cost, given_on, staff_user:given_by(name)')
+        .eq('enrollment_id', current.enrollment_id).order('given_on', { ascending: false }),
+      supabase.from('test_cost_log').select('id, test_name, cost, logged_on')
+        .eq('enrollment_id', current.enrollment_id).order('logged_on', { ascending: false }),
+      supabase.from('v_p1_margin')
+        .select('fee, consult_cost, staff_time_cost, test_costs, supplement_cost, margin')
+        .eq('enrollment_id', current.enrollment_id).maybeSingle(),
+    ]);
+    p1 = {
+      budget: Number(prog?.supplement_budget ?? 0),
+      rate: Number(prog?.wholesale_rate ?? 0.5),
+      supplements: (supp ?? []).map((r) => ({
+        ...r,
+        given_by_name: (r.staff_user as unknown as { name: string } | null)?.name ?? null,
+      })) as SupplementRow[],
+      tests: (tst ?? []) as TestRow[],
+      margin: (m ?? { fee: current.amount_paid, consult_cost: 0, staff_time_cost: 0, test_costs: 0, supplement_cost: 0, margin: 0 }) as MarginRow,
+    };
+  }
+
   const hasOpenProgram = enrollments.some((e) => e.status === 'active' || e.status === 'paused');
 
   const stages = new Map<string, StepRowData[]>();
@@ -160,6 +187,11 @@ export default async function PatientPage({
               </div>
             ))}
           </section>
+
+          {p1 && (
+            <P1Panel enrollmentId={current.enrollment_id} patientId={id} today={today} isAdmin={staff?.role === 'admin'}
+              budget={p1.budget} rate={p1.rate} supplements={p1.supplements} tests={p1.tests} margin={p1.margin} />
+          )}
 
           {upgrade && p2 && (
             <UpgradeBox enrollmentId={current.enrollment_id} patientId={id} credit={Number(current.amount_paid)}

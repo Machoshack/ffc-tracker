@@ -5,7 +5,8 @@ const NAV = [
   { href: '/', label: 'Timeline' },
   { href: '/queue', label: 'My queue' },
   { href: '/patients', label: 'Patients' },
-  // More screens are added here as they're built: Pipeline, Dashboard, P1 margin, Devices, Settings.
+  { href: '/margin', label: 'P1 margin' },
+  // More screens are added here as they're built: Settings, Devices, Dashboard, Pipeline.
 ];
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {

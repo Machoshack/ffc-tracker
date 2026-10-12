@@ -2,7 +2,7 @@
 
 Internal app for Fresh Fit Consulting to track patients through programs, steps owed, P1 supplement budgets and margin, and device rentals.
 
-Status: database, login, timeline, patient page, My queue, Patients list, and Add patient are built. More screens come next.
+Status: database, login, timeline, patient page, My queue, Patients list, Add patient, P1 supplements and tests, and P1 margin are built. More screens come next.
 
 ## What's here
 
@@ -17,7 +17,7 @@ Status: database, login, timeline, patient page, My queue, Patients list, and Ad
 - `supabase/migrations/0007_patient_codes.sql`: patients identified by code only (Mike Smith 1994 is MSMI94); names and birth dates removed
 - `supabase/migrations/0008_fake_patient_codes.sql`: gives the fake test patients MSMI94-style codes
 - `supabase/seed.sql`: fake patients and staff only
-- `tests/run-tests.mjs`: 71 checks run against a throwaway database
+- `tests/run-tests.mjs`: 79 checks run against a throwaway database
 
 ## Run locally
 

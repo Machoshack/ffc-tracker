@@ -305,6 +305,28 @@ console.log('\nFake data, screens, audit log, and access rules');
   const undo = await as(staffLogin, () => db.query(`update step set status = 'not_started' where id = $1 returning completed_on`, [bc]));
   check('Undo clears the done date', undo.rows[0].completed_on === null);
 
+  // P1 logging, as staff
+  const p1e = (await one(db, `select e.id from enrollment e join patient p on p.id = e.patient_id
+                              where p.patient_code = 'DFAK91' and e.status = 'active'`)).id;
+  const chk = await as(staffLogin, () => one(db, `select * from supplement_check($1, 200)`, [p1e]));
+  check('Staff can check the supplement budget', Number(chk.budget) === 650 && Number(chk.remaining_after) === Number(chk.remaining_now) - 100,
+        `(got ${JSON.stringify(chk)})`);
+  const ins = await as(staffLogin, () => db.query(
+    `insert into supplement_log (enrollment_id, item, retail_price, given_on) values ($1, 'Vitamin D', 30, current_date) returning wholesale_cost, given_by`, [p1e]));
+  check('Staff can log a supplement; wholesale fills in at 50%', Number(ins.rows[0].wholesale_cost) === 15);
+  check('The supplement records who gave it', ins.rows[0].given_by === staff);
+  const tc = await as(staffLogin, () => db.query(
+    `insert into test_cost_log (enrollment_id, test_name, cost) values ($1, 'Stool test', 300) returning id`, [p1e]));
+  check('Staff can log a test cost', tc.rows.length === 1);
+  const mrow = await as(staffLogin, () => one(db, `select margin, test_costs from v_p1_margin where enrollment_id = $1`, [p1e]));
+  check('Staff can see the margin, and it includes the new test', Number(mrow.test_costs) === 750, `(got ${mrow?.test_costs})`);
+  const sd = await as(staffLogin, () => db.query(`delete from supplement_log where enrollment_id = $1 returning id`, [p1e]));
+  check('Staff cannot remove supplement entries', sd.rows.length === 0);
+  const ad = await as(adminLogin, () => db.query(`delete from test_cost_log where id = $1 returning id`, [tc.rows[0].id]));
+  check('Admin can remove an entry made by mistake', ad.rows.length === 1);
+  const gone = await one(db, `select count(*)::int as n from audit_log where record_type = 'test_cost_log' and action = 'delete'`);
+  check('The removal is recorded in the audit log', gone.n === 1);
+
   await as(staffLogin, () => db.query(`delete from audit_log`).catch(() => {}));
   const kept = await one(db, `select count(*)::int as n from audit_log`);
   check('Nobody can erase the audit log', kept.n > 100);
