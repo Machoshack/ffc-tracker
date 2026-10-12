@@ -1,7 +1,9 @@
+import Link from 'next/link';
 import { addDays, daysBetween, mondayOf, shortDate, weekdayDate } from '@/lib/dates';
 
 export type TimelineEnrollment = {
   enrollment_id: string;
+  patient_id: string;
   patient_code: string;
   display_name: string;
   program_code: string;
@@ -111,7 +113,7 @@ export function Timeline({
         {rows.map((e) => (
           <li key={e.enrollment_id} className="rounded border border-line bg-white p-3">
             <div className="flex items-baseline justify-between gap-2">
-              <span className="font-medium">{e.display_name}</span>
+              <Link href={`/patients/${e.patient_id}`} className="font-medium text-brand underline-offset-2 hover:underline">{e.display_name}</Link>
               <span className="text-xs text-muted">{e.patient_code} · {e.program_code}</span>
             </div>
             <div className="mt-1 text-sm text-muted">{e.current_stage ?? 'All steps done'}</div>
@@ -152,7 +154,7 @@ export function Timeline({
               <div key={e.enrollment_id} className="grid grid-cols-[240px_1fr] border-b border-line last:border-b-0">
                 <div className="px-3 py-2">
                   <div className="flex items-baseline gap-2">
-                    <span className="truncate font-medium">{e.display_name}</span>
+                    <Link href={`/patients/${e.patient_id}`} className="truncate font-medium hover:text-brand hover:underline underline-offset-2">{e.display_name}</Link>
                     <span className="text-xs text-muted">{e.program_code}</span>
                   </div>
                   <div className="flex min-w-0 items-center gap-2 text-xs text-muted">

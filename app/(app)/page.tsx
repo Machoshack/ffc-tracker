@@ -21,7 +21,7 @@ export default async function TimelinePage({
 
   let eq = supabase
     .from('v_enrollments')
-    .select('enrollment_id, patient_code, display_name, program_code, start_date, current_stage, days_in_stage, overdue_steps, next_due, planned_end')
+    .select('enrollment_id, patient_id, patient_code, display_name, program_code, start_date, current_stage, days_in_stage, overdue_steps, next_due, planned_end')
     .in('status', ['active', 'paused']);
   if (program) eq = eq.eq('program_code', program);
   const { data: enrollments, error } = await eq;

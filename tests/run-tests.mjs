@@ -274,6 +274,37 @@ console.log('\nFake data, screens, audit log, and access rules');
   const still = await one(db, `select count(*)::int as n from patient where patient_code = 'T-1012'`);
   check('Staff cannot delete records', still.n === 1);
 
+  // What the patient page does, done as a logged-in staff member
+  const t1001 = (await one(db, `select e.id from enrollment e join patient p on p.id = e.patient_id
+                                where p.patient_code = 'T-1001' and e.status = 'active'`)).id;
+  const stepId = async (key) => (await one(db, `select s.id from step s join step_template t on t.id = s.template_id
+                                               where s.enrollment_id = $1 and t.key = $2`, [t1001, key])).id;
+  let msg = '';
+  try {
+    const grip = await stepId('fhe_v2_grip');
+    await as(staffLogin, () => db.query(`update step set status = 'done' where id = $1`, [grip]));
+  } catch (e) { msg = e.message; }
+  check('Staff marking Grip strength done before Body composition is refused', /BLOCKED.*Body composition/.test(msg), `(got ${msg})`);
+
+  const bc = await stepId('fhe_v2_bodycomp');
+  const r = await as(staffLogin, () => db.query(`update step set status = 'done', completed_on = current_date where id = $1 returning id`, [bc]));
+  check('Staff can mark a step done', r.rows.length === 1);
+  const note = await as(staffLogin, () => db.query(`update step set notes = 'Patient asked for afternoon slot' where id = $1 returning id`, [bc]));
+  check('Staff can add a note', note.rows.length === 1);
+  const stepWho = await one(db, `select s.name from audit_log a join staff_user s on s.id = a.staff_user_id
+                             where a.record_type = 'step' and a.record_id = $1 order by a.id desc limit 1`, [bc]);
+  check('The audit log records who changed the step', stepWho?.name === 'Front Desk Tester');
+
+  const consult = await stepId('fhe_v3_consult');
+  const before = (await one(db, `select due_date from step where id = $1`, [consult])).due_date;
+  const lab = await stepId('fhe_lab_score');
+  await as(staffLogin, () => db.query(`update step set due_date = due_date + 7 where id = $1`, [lab]));
+  const after = (await one(db, `select due_date from step where id = $1`, [consult])).due_date;
+  check('Staff rebooking a step a week later pushes the results consult back', after > before);
+
+  const undo = await as(staffLogin, () => db.query(`update step set status = 'not_started' where id = $1 returning completed_on`, [bc]));
+  check('Undo clears the done date', undo.rows[0].completed_on === null);
+
   await as(staffLogin, () => db.query(`delete from audit_log`).catch(() => {}));
   const kept = await one(db, `select count(*)::int as n from audit_log`);
   check('Nobody can erase the audit log', kept.n > 100);
