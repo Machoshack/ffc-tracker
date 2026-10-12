@@ -1,0 +1,24 @@
+import { PGlite } from '@electric-sql/pglite';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { DashboardView } from '../components/DashboardView';
+import { PipelineView } from '../components/PipelineView';
+import { todayInNewYork } from '../lib/dates';
+
+const db = new PGlite();
+await db.exec(`create role anon nologin; create role authenticated nologin; create role authenticator nologin; create schema auth;
+  create table auth.users (id uuid primary key default gen_random_uuid(), email text);
+  create function auth.uid() returns uuid language sql stable as $$ select null::uuid $$;`);
+await db.exec(readFileSync('setup.sql', 'utf8'));
+const iso = (r: any) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, v instanceof Date ? v.toISOString().slice(0, 10) : v]));
+const q = async (s: string) => (await db.query(s)).rows.map(iso);
+const today = todayInNewYork();
+const active = (await q(`select * from v_enrollments where status in ('active','paused')`)).map((e: any) => ({ ...e, overdue_steps: Number(e.overdue_steps) }));
+const stages = await q(`select s.name, s.sort, p.code as program_code from program_stage s join program p on p.id = s.program_id`);
+const overdue = await q(`select * from v_steps where enrollment_status='active' and status in ('not_started','in_progress') and due_date < current_date order by due_date`);
+const history = await q(`select program_code, status, start_date, completed_on from v_enrollments`);
+const css = readFileSync(process.argv[2], 'utf8');
+const page = (body: string) => `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style></head><body class="font-sans"><main class="mx-auto max-w-7xl px-4 py-6">${body}</main></body></html>`;
+writeFileSync('/tmp/claude-0/dash.html', page(renderToStaticMarkup(<DashboardView active={active as any} stages={stages as any} overdue={overdue as any} history={history as any} today={today} overBudget={0} />)));
+writeFileSync('/tmp/claude-0/pipe.html', page(renderToStaticMarkup(<PipelineView active={active as any} stages={stages as any} program="FHE" today={today} />)));
+console.log('ok', active.length, overdue.length);

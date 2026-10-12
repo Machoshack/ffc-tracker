@@ -4,9 +4,11 @@ import { getCurrentStaff } from '@/lib/supabase/server';
 const NAV = [
   { href: '/', label: 'Timeline' },
   { href: '/queue', label: 'My queue' },
+  { href: '/pipeline', label: 'Pipeline' },
   { href: '/patients', label: 'Patients' },
+  { href: '/dashboard', label: 'Dashboard' },
   { href: '/margin', label: 'P1 margin' },
-  // More screens are added here as they're built: Devices, Dashboard, Pipeline. Settings shows for admins only.
+  // Devices comes later. Settings shows for admins only.
 ];
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {

@@ -18,6 +18,4 @@ Waiting on: Alan trimming the current supplement list (100+ products) to the one
 
 
 - Devices: Firstbeat and sleep device rentals
-- Dashboard
-- Pipeline board
 - Before real patients: HIPAA hosting decision (BAAs) with the practice's HIPAA advisor
