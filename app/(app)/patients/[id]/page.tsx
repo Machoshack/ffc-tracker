@@ -5,6 +5,7 @@ import { todayInNewYork, weekdayDate } from '@/lib/dates';
 import { StepRow, type StepView } from './StepRow';
 import { UpgradeBox } from './UpgradeBox';
 import { DeletePatient } from './DeletePatient';
+import { collapsedLabel } from '@/lib/board';
 import { P1Panel, type MarginRow, type SupplementRow, type TestRow } from './P1Panel';
 
 type Enrollment = {
@@ -200,27 +201,64 @@ export default async function PatientPage({
           )}
 
           <div className="space-y-4">
-            {[...stages.entries()].map(([stage, stageSteps]) => {
-              const finished = stageSteps.every((s) => s.status === 'done' || s.status === 'skipped');
+            {(() => {
+              const renderStage = ([stage, stageSteps]: [string, StepRowData[]]) => {
+                const finished = stageSteps.every((s) => s.status === 'done' || s.status === 'skipped');
+                return (
+                  <section key={stage} className="overflow-hidden rounded border border-line bg-white">
+                    <h2 className="flex items-center justify-between border-b border-line bg-paper px-4 py-2 text-sm font-semibold">
+                      {stage}
+                      {finished && <span className="text-xs font-medium text-done">Complete</span>}
+                    </h2>
+                    <ul className="divide-y divide-line">
+                      {stageSteps.map((s) => (
+                        <StepRow
+                          key={s.step_id}
+                          patientId={id}
+                          today={today}
+                          step={{ ...s, waiting_on: waitingOn.get(s.step_key) ?? [] }}
+                        />
+                      ))}
+                    </ul>
+                  </section>
+                );
+              };
+              const all = [...stages.entries()];
+              const groupLabel = (entry: [string, StepRowData[]]) => collapsedLabel(current.program_code, entry[1][0].stage_sort);
+              const grouped = all.filter((e) => groupLabel(e));
+              const rest = all.filter((e) => !groupLabel(e));
+              if (!grouped.length) return all.map(renderStage);
+
+              // Protocol II: the FHE stages sit inside one block that opens on click.
+              const fheSteps = grouped.flatMap(([, st]) => st);
+              const open = fheSteps.filter((s) => s.status === 'not_started' || s.status === 'in_progress');
+              const done = fheSteps.length - open.length;
+              const late = open.filter((s) => s.is_overdue).length;
+              const next = [...open].sort((a, b) => a.due_date.localeCompare(b.due_date))[0];
               return (
-                <section key={stage} className="overflow-hidden rounded border border-line bg-white">
-                  <h2 className="flex items-center justify-between border-b border-line bg-paper px-4 py-2 text-sm font-semibold">
-                    {stage}
-                    {finished && <span className="text-xs font-medium text-done">Complete</span>}
-                  </h2>
-                  <ul className="divide-y divide-line">
-                    {stageSteps.map((s) => (
-                      <StepRow
-                        key={s.step_id}
-                        patientId={id}
-                        today={today}
-                        step={{ ...s, waiting_on: waitingOn.get(s.step_key) ?? [] }}
-                      />
-                    ))}
-                  </ul>
-                </section>
+                <>
+                  <details className="group overflow-hidden rounded border border-line bg-white">
+                    <summary className="flex cursor-pointer list-none [&::-webkit-details-marker]:hidden flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 hover:bg-paper">
+                      <span className="text-sm font-semibold">{groupLabel(grouped[0])}</span>
+                      <span className="flex min-w-40 flex-1 items-center gap-2">
+                        <span className="h-2 flex-1 overflow-hidden rounded bg-paper">
+                          <span className="block h-full bg-done" style={{ width: `${(done / fheSteps.length) * 100}%` }} />
+                        </span>
+                        <span className="whitespace-nowrap text-sm text-muted">{done} of {fheSteps.length} steps</span>
+                      </span>
+                      {late > 0 && <span className="rounded bg-late px-1.5 text-xs font-medium text-white">{late} late</span>}
+                      <span className="basis-full text-sm text-muted sm:basis-auto">
+                        {next ? <>Next: {next.step_name}, due {weekdayDate(next.due_date)}</> : <span className="text-done">Complete</span>}
+                      </span>
+                      <span className="ml-auto text-xs text-brand underline group-open:hidden">Show steps</span>
+                      <span className="ml-auto hidden text-xs text-brand underline group-open:inline">Hide steps</span>
+                    </summary>
+                    <div className="space-y-3 border-t border-line bg-paper p-3">{grouped.map(renderStage)}</div>
+                  </details>
+                  {rest.map(renderStage)}
+                </>
               );
-            })}
+            })()}
           </div>
         </>
       )}

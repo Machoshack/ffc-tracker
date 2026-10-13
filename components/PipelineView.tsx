@@ -43,8 +43,18 @@ export function PipelineView({ active, stages, program, today, linkBase = '/pipe
                       className={`block rounded border bg-white px-3 py-2 text-sm hover:border-brand ${e.overdue_steps > 0 ? 'border-late/50' : 'border-line'}`}>
                       <div className="flex items-baseline justify-between gap-2">
                         <span className="font-mono font-semibold">{e.patient_code}</span>
-                        <span className="text-xs text-muted">{e.days_in_stage ?? 0}d here</span>
+                        <span className="text-xs text-muted">{e.days_in_stage ?? 0}d {e.fhe ? 'in FHE' : 'here'}</span>
                       </div>
+                      {e.fhe && (
+                        <div className="mt-1.5">
+                          <div className="h-1.5 overflow-hidden rounded bg-paper">
+                            <div className="h-full bg-done" style={{ width: `${(e.fhe.done / Math.max(e.fhe.total, 1)) * 100}%` }} />
+                          </div>
+                          <div className="mt-0.5 text-xs text-muted">
+                            {e.fhe.done} of {e.fhe.total} FHE steps{e.fhe.next ? ` · next: ${e.fhe.next}` : ''}
+                          </div>
+                        </div>
+                      )}
                       <div className="mt-1 flex flex-wrap items-center gap-x-2 text-xs">
                         {e.overdue_steps > 0 && (
                           <span className="rounded bg-late px-1.5 font-medium text-white">{e.overdue_steps} late</span>

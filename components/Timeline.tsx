@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { collapsedLabel } from '@/lib/board';
 import { addDays, daysBetween, mondayOf, shortDate, toDate, weekdayDate } from '@/lib/dates';
 
 export type TimelineEnrollment = {
@@ -18,6 +19,7 @@ export type TimelineEnrollment = {
 
 export type TimelineStep = {
   enrollment_id: string;
+  program_code?: string;
   stage_name: string;
   stage_sort: number;
   step_sort: number;
@@ -50,16 +52,37 @@ const KIND_LABEL: Record<Marker['kind'], string> = {
 };
 
 // One marker per stage: where it finished, or when its next unfinished step is due.
+// Protocol II's FHE stages become one dot.
 function markersFor(steps: TimelineStep[], today: string): Marker[] {
-  const byStage = new Map<number, TimelineStep[]>();
-  for (const s of [...steps].sort((a, b) => a.step_sort - b.step_sort)) byStage.set(s.stage_sort, [...(byStage.get(s.stage_sort) ?? []), s]);
+  const byStage = new Map<string, TimelineStep[]>();
+  for (const s of [...steps].sort((a, b) => a.stage_sort - b.stage_sort || a.step_sort - b.step_sort)) {
+    const key = collapsedLabel(s.program_code ?? '', s.stage_sort) ?? String(s.stage_sort);
+    byStage.set(key, [...(byStage.get(key) ?? []), s]);
+  }
 
-  return [...byStage.values()].map((stageSteps) => {
+  return [...byStage.entries()].map(([key, stageSteps]) => {
     const open = stageSteps.filter((s) => s.status === 'not_started' || s.status === 'in_progress');
-    const stage = stageSteps[0].stage_name;
+    const collapsed = !/^\d+$/.test(key);
+    const stage = collapsed ? key : stageSteps[0].stage_name;
+    const doneCount = stageSteps.length - open.length;
     if (open.length === 0) {
       const date = stageSteps.map((s) => s.completed_on ?? s.due_date).sort().at(-1)!;
-      return { stage, date, kind: 'done', steps: stageSteps.map((s) => `${s.step_name}: done`) };
+      return {
+        stage, date, kind: 'done',
+        steps: collapsed ? [`All ${stageSteps.length} steps done`] : stageSteps.map((s) => `${s.step_name}: done`),
+      };
+    }
+    if (collapsed) {
+      const date = open.map((s) => s.due_date).sort()[0];
+      const kind: Marker['kind'] = date < today ? 'late' : open.every((s) => s.is_blocked) ? 'wait' : 'due';
+      return {
+        stage, date, kind,
+        steps: [
+          `${doneCount} of ${stageSteps.length} steps done. Still open:`,
+          ...open.slice(0, 6).map((s) => `${s.step_name}: due ${shortDate(s.due_date)}${s.is_blocked ? ' (waiting)' : ''}`),
+          ...(open.length > 6 ? [`and ${open.length - 6} more`] : []),
+        ],
+      };
     }
     const date = open.map((s) => s.due_date).sort()[0];
     const kind: Marker['kind'] =

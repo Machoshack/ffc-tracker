@@ -4,6 +4,7 @@ import { Timeline, type TimelineEnrollment, type TimelineStep } from '@/componen
 import { TimelineControls } from '@/components/TimelineControls';
 import { todayInNewYork } from '@/lib/dates';
 import { resolveWindow, timelineHref, type TimelineParams } from '@/lib/timelineWindow';
+import { collapseEnrollment } from '@/lib/board';
 
 const PROGRAMS = [
   { code: '', label: 'All' },
@@ -39,7 +40,7 @@ export default async function TimelinePage({ searchParams }: { searchParams: Pro
   const { data: steps } = ids.length
     ? await supabase
         .from('v_steps')
-        .select('enrollment_id, stage_name, stage_sort, step_sort, step_name, owner_role, due_date, status, completed_on, is_blocked')
+        .select('enrollment_id, program_code, stage_name, stage_sort, step_sort, step_name, owner_role, due_date, status, completed_on, is_blocked')
         .in('enrollment_id', ids)
     : { data: [] };
 
@@ -48,6 +49,10 @@ export default async function TimelinePage({ searchParams }: { searchParams: Pro
   const firstYear = Number((first?.start_date ?? today).slice(0, 4));
   const thisYear = Number(today.slice(0, 4));
   const years = Array.from({ length: thisYear + 1 - firstYear + 1 }, (_, i) => thisYear + 1 - i);
+
+  // Protocol II patients still in their FHE show "FHE" as their stage.
+  const sortByName = new Map((steps ?? []).map((st) => [`${st.program_code}|${st.stage_name}`, st.stage_sort as number]));
+  const rows = (enrollments ?? []).map((e) => collapseEnrollment(e, sortByName, today));
 
   const overdue = (enrollments ?? []).reduce((n, e) => n + (e.overdue_steps ?? 0), 0);
   const finished = (enrollments ?? []).filter((e) => e.status === 'completed' || e.status === 'converted').length;
@@ -85,7 +90,7 @@ export default async function TimelinePage({ searchParams }: { searchParams: Pro
         <p className="rounded border border-late bg-white p-4 text-late">Could not load patients: {error.message}</p>
       ) : (
         <Timeline
-          enrollments={(enrollments ?? []) as TimelineEnrollment[]}
+          enrollments={rows as TimelineEnrollment[]}
           steps={(steps ?? []) as TimelineStep[]}
           today={today}
           start={win.start}
