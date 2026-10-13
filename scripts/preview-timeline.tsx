@@ -48,6 +48,6 @@ const body = renderToStaticMarkup(
 
 writeFileSync(
   outFile,
-  `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Waypoint Preview</title><style>${readFileSync(cssFile, 'utf8')}</style></head><body class="min-h-screen font-sans antialiased">${body}</body></html>`,
+  `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>FFC Waypoint Preview</title><style>${readFileSync(cssFile, 'utf8')}</style></head><body class="min-h-screen font-sans antialiased">${body}</body></html>`,
 );
 console.log(`wrote ${outFile}`);
