@@ -27,8 +27,8 @@ $$;
 -- FHE steps are shared by FHE and P2, so they're written once here.
 create function _fhe_steps(p text) returns void language plpgsql as $$
 begin
-  perform _stage(p, 1, 'Visit 1');
-  perform _stage(p, 2, 'Visit 2');
+  perform _stage(p, 1, 'Session 1');
+  perform _stage(p, 2, 'Session 2');
   perform _stage(p, 3, 'Scoring and packet');
   perform _stage(p, 4, 'Visit 3: results consult');
 

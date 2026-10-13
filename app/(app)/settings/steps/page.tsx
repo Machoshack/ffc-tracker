@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { getCurrentStaff } from '@/lib/supabase/server';
-import { StepEditor, NewStepForm, type StepTemplate, type Stage } from './StepEditor';
+import { StepEditor, NewStepForm, StageName, type StepTemplate, type Stage } from './StepEditor';
 
 const ORDER = [
   { code: 'TS', label: 'Two-Step' },
@@ -57,7 +57,7 @@ export default async function StepSettingsPage({ searchParams }: { searchParams:
         const inStage = steps.filter((s) => s.stage_id === stage.id);
         return (
           <section key={stage.id} className="mb-4 overflow-hidden rounded border border-line bg-white">
-            <h2 className="border-b border-line bg-paper px-4 py-2 text-sm font-semibold">{stage.name}</h2>
+            <h2 className="border-b border-line bg-paper px-4 py-2 text-sm font-semibold"><StageName stage={stage} /></h2>
             {inStage.length === 0 ? (
               <p className="px-4 py-3 text-sm text-muted">No steps.</p>
             ) : (

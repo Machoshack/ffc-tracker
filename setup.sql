@@ -692,8 +692,8 @@ $$;
 -- FHE steps are shared by FHE and P2, so they're written once here.
 create function _fhe_steps(p text) returns void language plpgsql as $$
 begin
-  perform _stage(p, 1, 'Visit 1');
-  perform _stage(p, 2, 'Visit 2');
+  perform _stage(p, 1, 'Session 1');
+  perform _stage(p, 2, 'Session 2');
   perform _stage(p, 3, 'Scoring and packet');
   perform _stage(p, 4, 'Visit 3: results consult');
 
@@ -980,6 +980,18 @@ left join (select enrollment_id, sum(wholesale_cost) as supplement_cost from sup
 where e.status <> 'cancelled';
 
 grant select on v_p1_margin to authenticated;
+
+
+-- ===== supabase/migrations/0010_fhe_sessions.sql =====
+-- FFC Waypoint: FHE Visit 1 and Visit 2 are staff sessions, not physician visits.
+-- Renames them in FHE and in Protocol II (which includes the FHE). Safe to run more than once.
+
+update program_stage s
+   set name = case s.name when 'Visit 1' then 'Session 1' when 'Visit 2' then 'Session 2' end
+  from program p
+ where p.id = s.program_id
+   and p.code in ('FHE', 'P2')
+   and s.name in ('Visit 1', 'Visit 2');
 
 
 -- ===== supabase/seed.sql =====

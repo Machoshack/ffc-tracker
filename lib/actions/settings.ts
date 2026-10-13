@@ -181,3 +181,18 @@ export async function removeStep(id: string): Promise<SettingsState> {
   revalidatePath(`/settings/steps`);
   return { ok: Date.now() };
 }
+
+export async function renameStage(id: string, name: string): Promise<SettingsState> {
+  const { supabase, denied } = await requireAdmin();
+  if (denied) return { error: 'Only admins can change settings.' };
+  const clean = name.trim();
+  if (!clean) return { error: 'The stage needs a name.' };
+  const { data, error } = await supabase.from('program_stage').update({ name: clean }).eq('id', id).select('id');
+  if (error) return { error: friendly(error.message) };
+  if (!data?.length) return { error: 'Nothing was changed.' };
+  revalidatePath('/settings/steps');
+  revalidatePath('/');
+  revalidatePath('/pipeline');
+  revalidatePath('/dashboard');
+  return { ok: Date.now(), message: 'Renamed.' };
+}

@@ -1,7 +1,7 @@
 'use client';
 
 import { useActionState, useEffect, useRef, useState, useTransition } from 'react';
-import { addStep, removeStep, updateStep, type SettingsState } from '@/lib/actions/settings';
+import { addStep, removeStep, renameStage, updateStep, type SettingsState } from '@/lib/actions/settings';
 
 export type Stage = { id: string; name: string; sort: number };
 export type StepTemplate = {
@@ -124,5 +124,36 @@ export function NewStepForm({ programCode, stages, allSteps }: { programCode: st
         {state.error && <span className="text-late">{state.error}</span>}
       </div>
     </form>
+  );
+}
+
+export function StageName({ stage }: { stage: Stage }) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(stage.name);
+  const [pending, start] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  if (!editing) {
+    return (
+      <span className="flex items-center gap-2">
+        {stage.name}
+        <button type="button" onClick={() => setEditing(true)} className="text-xs font-normal text-muted underline hover:text-brand">
+          Rename
+        </button>
+      </span>
+    );
+  }
+  return (
+    <span className="flex flex-wrap items-center gap-2 font-normal">
+      <input value={name} onChange={(e) => setName(e.target.value)} autoFocus
+        className="rounded border border-line bg-white px-2 py-1 text-sm outline-none focus:border-brand" />
+      <button type="button" disabled={pending}
+        onClick={() => start(async () => {
+          const r = await renameStage(stage.id, name);
+          if (r.error) setError(r.error); else { setError(null); setEditing(false); }
+        })}
+        className="rounded bg-brand px-3 py-1 text-sm font-medium text-white disabled:opacity-60">Save</button>
+      <button type="button" onClick={() => { setEditing(false); setName(stage.name); }} className="text-sm text-muted underline">Cancel</button>
+      {error && <span className="text-sm text-late">{error}</span>}
+    </span>
   );
 }

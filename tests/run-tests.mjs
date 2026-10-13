@@ -79,8 +79,8 @@ console.log('\nFHE enrollment, blocks, and shifting');
 
   const n = await one(db, `select count(*)::int as n from step where enrollment_id = $1`, [e]);
   check('FHE creates 14 steps', n.n === 14, `(got ${n.n})`);
-  check('Visit 1 due Mon 10/12', await stepDue(db, e, 'fhe_v1_bloodwork') === '2026-10-12');
-  check('Visit 2 due Mon 10/19 (day 7)', await stepDue(db, e, 'fhe_v2_bodycomp') === '2026-10-19');
+  check('Session 1 due Mon 10/12', await stepDue(db, e, 'fhe_v1_bloodwork') === '2026-10-12');
+  check('Session 2 due Mon 10/19 (day 7)', await stepDue(db, e, 'fhe_v2_bodycomp') === '2026-10-19');
   check('Results consult due Fri 11/6 (day 24 is a Thursday)',
         ['2026-11-06'].includes(await stepDue(db, e, 'fhe_v3_consult')),
         `(got ${await stepDue(db, e, 'fhe_v3_consult')})`);
@@ -96,7 +96,7 @@ console.log('\nFHE enrollment, blocks, and shifting');
   for (const k of ['fhe_v1_bloodwork', 'fhe_v1_metabolomics', 'fhe_v1_omegaquant'])
     await setStep(db, e, k, 'done', '2026-10-12');
   const before = await stepDue(db, e, 'fhe_v3_consult');
-  check('On-time Visit 1 does not move anything', before === '2026-11-06');
+  check('On-time Session 1 does not move anything', before === '2026-11-06');
 
   // Visit 2 happens 5 days late (Sat 10/24 -> treat as Fri 10/23, 4 days late). All four items same day.
   await setStep(db, e, 'fhe_v2_eeg_pickup', 'done', '2026-10-23');
@@ -104,7 +104,7 @@ console.log('\nFHE enrollment, blocks, and shifting');
   await setStep(db, e, 'fhe_v2_grip',       'done', '2026-10-23');
   await setStep(db, e, 'fhe_v2_bolt',       'done', '2026-10-23');
   const sh = await one(db, `select shift_days from enrollment where id = $1`, [e]);
-  check('Four late Visit 2 items shift the plan once (4 days), not four times', sh.shift_days === 4,
+  check('Four late Session 2 items shift the plan once (4 days), not four times', sh.shift_days === 4,
         `(got ${sh.shift_days})`);
   check('Vitality score moved from 10/23 to 10/26', await stepDue(db, e, 'fhe_vitality_score') === '2026-10-26',
         `(got ${await stepDue(db, e, 'fhe_vitality_score')})`);
@@ -219,7 +219,7 @@ console.log('\nFake data, screens, audit log, and access rules');
 
   const t1002 = await one(db, `select shift_days from enrollment e join patient p on p.id = e.patient_id
                                where p.patient_code = 'BSAM85'`);
-  check('T-1002 late Visit 2 shifted plan by 2 days', t1002.shift_days === 2, `(got ${t1002.shift_days})`);
+  check('T-1002 late Session 2 shifted plan by 2 days', t1002.shift_days === 2, `(got ${t1002.shift_days})`);
 
   const margin = await rows(db, `select patient_code, fee, test_costs, supplement_cost, supplement_remaining, margin
                                  from v_p1_margin order by patient_code`);
@@ -415,6 +415,22 @@ console.log('\nPatient codes');
   const next = await one(db, `select enroll_patient($1, 'FHE', current_date + 2, 950) as id`, [pid]);
   const count = await one(db, `select count(*)::int as n from enrollment where patient_id = $1`, [pid]);
   check('A patient can start a new program after finishing one', !!next.id && count.n === 2);
+}
+
+// ---------------------------------------------------------------------------
+console.log('\nFHE stage names');
+{
+  const db = await freshDb({ seed: true });
+  const names = await rows(db, `select p.code, s.name from program_stage s join program p on p.id = s.program_id
+                                where p.code in ('FHE','P2') and s.sort in (1,2) order by p.code, s.sort`);
+  check('FHE and P2 use Session 1 and Session 2', names.map((n) => n.name).join() === 'Session 1,Session 2,Session 1,Session 2',
+        `(got ${names.map((n) => n.name).join()})`);
+  await db.exec(`update program_stage set name = 'Visit 1' where name = 'Session 1' and program_id in (select id from program where code in ('FHE','P2')); update program_stage set name = 'Visit 2' where name = 'Session 2' and program_id in (select id from program where code in ('FHE','P2'))`);
+  await db.exec(read('supabase/migrations/0010_fhe_sessions.sql'));
+  await db.exec(read('supabase/migrations/0010_fhe_sessions.sql'));
+  const after = await one(db, `select count(*)::int as n from program_stage where name like 'Visit 1' or name like 'Visit 2'`);
+  const ts = await one(db, `select count(*)::int as n from program_stage s join program p on p.id = s.program_id where p.code = 'TS' and s.name = 'Session 1'`);
+  check('The update renames old Visit 1 and 2, and leaves Two-Step alone', after.n === 0 && ts.n === 1);
 }
 
 console.log(`\n${passed} passed, ${failed} failed\n`);
