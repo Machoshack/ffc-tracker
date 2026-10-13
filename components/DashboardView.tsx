@@ -72,7 +72,8 @@ export function DashboardView({ active, stages, overdue, history, today, overBud
   return (
     <div className="space-y-6">
       <section className="grid grid-cols-2 gap-px overflow-hidden rounded border border-line bg-line sm:grid-cols-4">
-        <Tile label="Active patients" value={active.length} />
+        <Tile label="Active patients" value={new Set(active.map((e) => e.patient_id)).size}
+          sub={active.length !== new Set(active.map((e) => e.patient_id)).size ? `${active.length} open programs` : undefined} />
         <Tile label="Overdue steps" value={overdue.length} alert={overdue.length > 0}
           sub={`${overdueStaff} staff · ${overduePhys} physician`} />
         <Tile label="Next step due in 7 days" value={dueSoon} sub="patients" />

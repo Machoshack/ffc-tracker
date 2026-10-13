@@ -15,6 +15,7 @@ export type TimelineEnrollment = {
   next_due: string | null;
   planned_end: string | null;
   status?: string;
+  detail?: string | null;
 };
 
 export type TimelineStep = {
@@ -29,6 +30,7 @@ export type TimelineStep = {
   status: 'not_started' | 'in_progress' | 'done' | 'skipped';
   completed_on: string | null;
   is_blocked: boolean;
+  optional?: boolean;
 };
 
 type Marker = {
@@ -61,7 +63,8 @@ function markersFor(steps: TimelineStep[], today: string): Marker[] {
   }
 
   return [...byStage.entries()].map(([key, stageSteps]) => {
-    const open = stageSteps.filter((s) => s.status === 'not_started' || s.status === 'in_progress');
+    // Optional steps (like "bloodwork drawn") never set a stage's date or make it late.
+    const open = stageSteps.filter((s) => (s.status === 'not_started' || s.status === 'in_progress') && !s.optional);
     const collapsed = !/^\d+$/.test(key);
     const stage = collapsed ? key : stageSteps[0].stage_name;
     const doneCount = stageSteps.length - open.length;
@@ -159,7 +162,7 @@ export function Timeline({
           <li key={e.enrollment_id} className="rounded border border-line bg-white p-3">
             <div className="flex items-baseline justify-between gap-2">
               <Link href={`/patients/${e.patient_id}`} className="font-medium text-brand underline-offset-2 hover:underline">{e.display_name}</Link>
-              <span className="text-xs text-muted">{e.program_code}</span>
+              <span className="text-xs text-muted">{e.program_code}{e.detail ? ` · ${e.detail}` : ''}</span>
             </div>
             <div className="mt-1 text-sm text-muted">{e.current_stage ?? (e.status === 'converted' ? 'Upgraded' : 'Finished')}</div>
             <div className="mt-2 flex items-center gap-2 text-sm">
@@ -202,7 +205,7 @@ export function Timeline({
                 <div className="px-3 py-2">
                   <div className="flex items-baseline gap-2">
                     <Link href={`/patients/${e.patient_id}`} className="truncate font-medium hover:text-brand hover:underline underline-offset-2">{e.display_name}</Link>
-                    <span className="text-xs text-muted">{e.program_code}</span>
+                    <span className="text-xs text-muted">{e.program_code}{e.detail ? ` · ${e.detail}` : ''}</span>
                   </div>
                   <div className="flex min-w-0 items-center gap-2 text-xs text-muted">
                     <span className="min-w-0 truncate">{e.current_stage ?? (e.status === 'converted' ? 'Upgraded' : 'Finished')}</span>

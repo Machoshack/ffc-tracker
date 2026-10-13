@@ -433,5 +433,55 @@ console.log('\nFHE stage names');
   check('The update renames old Visit 1 and 2, and leaves Two-Step alone', after.n === 0 && ts.n === 1);
 }
 
+// ---------------------------------------------------------------------------
+console.log('\nFollow-ups: labs and functional tests');
+{
+  const db = await freshDb({ seed: true });
+  const newPatient = async (code) => (await one(db, `insert into patient (patient_code) values ($1) returning id`, [code])).id;
+
+  // Lab follow-up: two weeks, bloodwork drawn optional
+  const a = await newPatient('LABA90');
+  const lab = (await one(db, `select enroll_patient($1, 'LAB', '2026-10-12') as id`, [a])).id;
+  check('Lab follow-up results consult is due two weeks out (Mon 10/26)', await stepDue(db, lab, 'lab_consult') === '2026-10-26');
+  await setStep(db, lab, 'lab_order', 'done', '2026-10-12');
+  const late = await one(db, `select overdue_steps from v_enrollments where enrollment_id = $1`, [lab]);
+  const drawn = await one(db, `select is_overdue, optional from v_steps where enrollment_id = $1 and step_key = 'lab_drawn'`, [lab]);
+  check('Bloodwork drawn is optional and never counts as late', drawn.optional === true && drawn.is_overdue === false);
+  await expectError(db, 'Lab results consult waits for results',
+    setStepSql(lab, 'lab_consult', 'done'), /BLOCKED.*Results received/);
+  await setStep(db, lab, 'lab_results', 'done', '2026-10-22');
+  await setStep(db, lab, 'lab_consult', 'done', '2026-10-26');
+  const done = await one(db, `select status from enrollment where id = $1`, [lab]);
+  const skipped = await one(db, `select s.status from step s join step_template t on t.id = s.template_id
+                                 where s.enrollment_id = $1 and t.key = 'lab_drawn'`, [lab]);
+  check('Lab follow-up finishes without bloodwork drawn being recorded', done.status === 'completed' && skipped.status === 'skipped',
+        `(got ${done.status}, ${skipped.status})`);
+
+  // Functional test: test name and prepaid
+  const b = await newPatient('FTBB85');
+  const ft = (await one(db, `select enroll_patient($1, 'FT', '2026-10-12', 0, null, 'GI-MAP', true) as id`, [b])).id;
+  const fte = await one(db, `select detail, prepaid, program_kind from v_enrollments where enrollment_id = $1`, [ft]);
+  check('Functional test records the test name and prepaid', fte.detail === 'GI-MAP' && fte.prepaid === true && fte.program_kind === 'followup');
+
+  // Overlap rules
+  await expectError(db, 'A second follow-up at the same time is refused',
+    `select enroll_patient('${b}', 'LAB', current_date)`, /one_open_enrollment_per_patient/);
+  const c = await newPatient('PTWO80');
+  await db.query(`select enroll_patient($1, 'P2', current_date - 100, 1650)`, [c]);
+  const withP2 = (await one(db, `select enroll_patient($1, 'FT', current_date, 0, null, 'OAT', false, true) as id`, [c])).id;
+  check('A follow-up can run alongside Protocol II', !!withP2);
+  const consult = await one(db, `select s.status, s.notes from step s join step_template t on t.id = s.template_id
+                                 where s.enrollment_id = $1 and t.key = 'ft_consult'`, [withP2]);
+  check('"Review at a Protocol II consult" skips the separate results consult', consult.status === 'skipped' && /Protocol II/.test(consult.notes));
+  const d = await newPatient('PONE80');
+  await db.query(`select enroll_patient($1, 'P1', current_date, 3000)`, [d]);
+  await expectError(db, 'A follow-up alongside Protocol I is refused',
+    `select enroll_patient('${d}', 'LAB', current_date)`, /one_open_enrollment_per_patient/);
+  const e2 = await newPatient('ETWO80');
+  await db.query(`select enroll_patient($1, 'LAB', current_date)`, [e2]);
+  await expectError(db, 'Starting FHE while a follow-up is open is refused',
+    `select enroll_patient('${e2}', 'FHE', current_date, 950)`, /one_open_enrollment_per_patient/);
+}
+
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed ? 1 : 0);

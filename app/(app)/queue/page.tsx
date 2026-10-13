@@ -17,6 +17,7 @@ type QueueStep = {
   due_date: string;
   status: string;
   is_blocked: boolean;
+  optional: boolean;
 };
 
 const FILTERS = [
@@ -36,7 +37,7 @@ export default async function QueuePage({ searchParams }: { searchParams: Promis
 
   let q = supabase
     .from('v_steps')
-    .select('step_id, patient_id, patient_code, display_name, program_code, stage_name, step_name, owner_role, owner_id, owner_name, due_date, status, is_blocked')
+    .select('step_id, patient_id, patient_code, display_name, program_code, stage_name, step_name, owner_role, owner_id, owner_name, due_date, status, is_blocked, optional')
     .in('enrollment_status', ['active'])
     .in('status', ['not_started', 'in_progress'])
     .lte('due_date', horizon)
@@ -49,7 +50,8 @@ export default async function QueuePage({ searchParams }: { searchParams: Promis
     q = q.eq('owner_role', who);
   }
   const { data, error } = await q;
-  const steps = (data ?? []) as QueueStep[];
+  // Optional steps (like "bloodwork drawn") show while upcoming but never land in Overdue.
+  const steps = ((data ?? []) as QueueStep[]).filter((s) => !s.optional || s.due_date >= today);
 
   const weekEnd = addDays(today, 7);
   const groups: { title: string; tone: string; items: QueueStep[] }[] = [
@@ -106,6 +108,7 @@ export default async function QueuePage({ searchParams }: { searchParams: Promis
                         </span>
                         {who !== 'mine' && <span className="capitalize">{s.owner_name ?? s.owner_role}</span>}
                         {s.status === 'in_progress' && <span className="text-due">In progress</span>}
+                        {s.optional && <span>Optional</span>}
                       </div>
                     </div>
                     {s.is_blocked ? (

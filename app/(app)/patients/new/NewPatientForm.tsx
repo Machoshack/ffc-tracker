@@ -7,7 +7,8 @@ import { buildPatientCode } from '@/lib/patientCode';
 
 const input = 'w-full rounded border border-line bg-white px-3 py-2 outline-none focus:border-brand';
 
-export function NewPatientForm({ programs, defaultStart, today, existing }: {
+export function NewPatientForm({ programs, defaultStart, today, existing, inProtocolII }: {
+  inProtocolII?: boolean;
   programs: ProgramOption[];
   defaultStart: string;
   today: string;
@@ -55,7 +56,7 @@ export function NewPatientForm({ programs, defaultStart, today, existing }: {
       )}
 
       <EnrollFields programs={programs} defaultStart={state.values?.start_date ?? defaultStart} today={today}
-        defaultPaidDate={state.values?.paid_date} />
+        defaultPaidDate={state.values?.paid_date} inProtocolII={inProtocolII} />
 
       {state.error && (
         <div className="mb-3 rounded bg-late/10 px-3 py-2 text-sm text-late">

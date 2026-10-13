@@ -13,6 +13,7 @@ export type StepView = {
   completed_on: string | null;
   notes: string | null;
   is_overdue: boolean;
+  optional?: boolean;
   waiting_on: string[];
 };
 
@@ -60,7 +61,10 @@ export function StepRow({ step, patientId, today }: { step: StepView; patientId:
         </span>
 
         <div className="min-w-0 flex-1">
-          <div className="font-medium">{step.step_name}</div>
+          <div className="font-medium">
+            {step.step_name}
+            {step.optional && <span className="ml-2 rounded bg-paper px-1.5 py-0.5 text-xs font-normal text-muted">Optional</span>}
+          </div>
           <div className="mt-0.5 flex flex-wrap gap-x-3 text-sm text-muted">
             <span className="capitalize">{step.owner_name ?? step.owner_role}</span>
             {step.status === 'done' && step.completed_on ? (

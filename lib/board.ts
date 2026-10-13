@@ -1,9 +1,9 @@
 // Shared data shapes and helpers for the Dashboard and Pipeline board.
 // Both screens take plain data so they can be checked with the fake data outside the app.
 
-export const PROGRAM_ORDER = ['TS', 'FHE', 'P1', 'P2'] as const;
+export const PROGRAM_ORDER = ['TS', 'FHE', 'P1', 'P2', 'LAB', 'FT'] as const;
 export const PROGRAM_LABEL: Record<string, string> = {
-  TS: 'Two-Step', FHE: 'FHE', P1: 'Protocol I', P2: 'Protocol II',
+  TS: 'Two-Step', FHE: 'FHE', P1: 'Protocol I', P2: 'Protocol II', LAB: 'Labs', FT: 'Functional test',
 };
 
 export type FheProgress = { done: number; total: number; next: string | null };

@@ -15,6 +15,9 @@ type Enrollment = {
   start_date: string;
   status: string;
   amount_paid: number;
+  detail: string | null;
+  prepaid: boolean | null;
+  program_kind: string;
   completed_on: string | null;
   current_stage: string | null;
   days_in_stage: number | null;
@@ -36,6 +39,7 @@ type StepRowData = {
   completed_on: string | null;
   notes: string | null;
   is_overdue: boolean;
+  optional: boolean;
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -61,7 +65,7 @@ export default async function PatientPage({
 
   const { data: enrollmentRows } = await supabase
     .from('v_enrollments')
-    .select('enrollment_id, program_code, program_name, start_date, status, amount_paid, completed_on, current_stage, days_in_stage, overdue_steps, planned_end')
+    .select('enrollment_id, program_code, program_name, start_date, status, amount_paid, completed_on, current_stage, days_in_stage, overdue_steps, planned_end, detail, prepaid, program_kind')
     .eq('patient_id', id)
     .order('start_date', { ascending: false });
   const enrollments = (enrollmentRows ?? []) as Enrollment[];
@@ -76,7 +80,7 @@ export default async function PatientPage({
   if (current) {
     const { data } = await supabase
       .from('v_steps')
-      .select('step_id, step_key, stage_name, stage_sort, step_sort, step_name, owner_role, owner_name, due_date, status, completed_on, notes, is_overdue')
+      .select('step_id, step_key, stage_name, stage_sort, step_sort, step_name, owner_role, owner_name, due_date, status, completed_on, notes, is_overdue, optional')
       .eq('enrollment_id', current.enrollment_id)
       .order('stage_sort').order('step_sort');
     steps = (data ?? []) as StepRowData[];
@@ -133,7 +137,10 @@ export default async function PatientPage({
     };
   }
 
-  const hasOpenProgram = enrollments.some((e) => e.status === 'active' || e.status === 'paused');
+  const openOnes = enrollments.filter((e) => e.status === 'active' || e.status === 'paused');
+  const hasOpenProgram = openOnes.length > 0;
+  // Protocol II patients can add one follow-up (labs or a functional test) alongside it.
+  const canAddFollowup = openOnes.length === 1 && openOnes[0].program_code === 'P2';
 
   const stages = new Map<string, StepRowData[]>();
   for (const s of steps) stages.set(s.stage_name, [...(stages.get(s.stage_name) ?? []), s]);
@@ -150,7 +157,12 @@ export default async function PatientPage({
         </div>
         {!hasOpenProgram && (
           <Link href={`/patients/new?patient=${id}`} className="rounded bg-brand px-3 py-1.5 text-sm font-medium text-white">
-            Start a program
+            Start a program or follow-up
+          </Link>
+        )}
+        {canAddFollowup && (
+          <Link href={`/patients/new?patient=${id}&followup=1`} className="rounded border border-brand bg-white px-3 py-1.5 text-sm font-medium text-brand">
+            Add labs or a functional test
           </Link>
         )}
         {enrollments.length > 1 && (
@@ -178,7 +190,10 @@ export default async function PatientPage({
               ['Started', weekdayDate(current.start_date)],
               [current.status === 'completed' ? 'Finished' : 'Planned end',
                 current.completed_on ? weekdayDate(current.completed_on) : current.planned_end ? weekdayDate(current.planned_end) : '-'],
-              ['Paid', `$${Number(current.amount_paid).toLocaleString()}`],
+              ...(current.program_kind === 'followup'
+                ? [[current.program_code === 'FT' ? 'Test' : 'Ordered', current.detail ?? '-'],
+                   ...(current.program_code === 'FT' ? [['Prepaid', current.prepaid ? 'Yes' : 'No']] : [])]
+                : [['Paid', `$${Number(current.amount_paid).toLocaleString()}`]]),
               ['Steps done', `${doneCount} of ${steps.length}`],
               ['Overdue', String(current.overdue_steps)],
               ['Days in stage', current.current_stage && current.days_in_stage != null ? String(current.days_in_stage) : '-'],

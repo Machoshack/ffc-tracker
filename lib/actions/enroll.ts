@@ -13,11 +13,12 @@ export type FormState = {
 };
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
-const PROGRAMS = ['TS', 'FHE', 'P1', 'P2'];
+const PROGRAMS = ['TS', 'FHE', 'P1', 'P2', 'LAB', 'FT'];
+const FOLLOWUPS = ['LAB', 'FT'];
 
 function friendly(message: string): string {
   if (/one_open_enrollment_per_patient/.test(message))
-    return 'This patient already has an active program. Finish, pause, or cancel it first.';
+    return 'This patient already has an open program. Follow-ups can only run alongside Protocol II.';
   if (/patient_patient_code_key/.test(message)) return 'That patient code is already in use.';
   if (/patient_code_format/.test(message)) return 'The patient code is not in the right format.';
   if (/Upgrade window closed on (\S+)/.test(message))
@@ -29,16 +30,28 @@ function friendly(message: string): string {
 function readEnrollment(form: FormData) {
   const program = String(form.get('program') ?? '');
   const start = String(form.get('start_date') ?? '');
-  const paid = Number(String(form.get('amount_paid') ?? '0').replace(/[$,]/g, ''));
-  const paidDate = String(form.get('paid_date') ?? '');
   if (!PROGRAMS.includes(program)) return { error: 'Pick a program.' } as const;
   if (!ISO_DATE.test(start)) return { error: 'Pick a start date.' } as const;
+
+  if (FOLLOWUPS.includes(program)) {
+    const detail = String(form.get('detail') ?? '').trim();
+    if (program === 'FT' && !detail) return { error: 'Enter which functional test.' } as const;
+    const prepaidRaw = String(form.get('prepaid') ?? '');
+    if (program === 'FT' && !['yes', 'no'].includes(prepaidRaw)) return { error: 'Say whether the test was prepaid.' } as const;
+    return {
+      program, start, paid: 0, paidDate: null, detail: detail || null,
+      prepaid: program === 'FT' ? prepaidRaw === 'yes' : null,
+      reviewAtP2: form.get('review_at_p2') === '1',
+    } as const;
+  }
+
+  const paid = Number(String(form.get('amount_paid') ?? '0').replace(/[$,]/g, ''));
+  const paidDate = String(form.get('paid_date') ?? '');
   if (!Number.isFinite(paid) || paid < 0) return { error: 'Amount paid must be a number.' } as const;
   return {
-    program,
-    start,
-    paid,
+    program, start, paid,
     paidDate: paid > 0 && ISO_DATE.test(paidDate) ? paidDate : null,
+    detail: null, prepaid: null, reviewAtP2: false,
   } as const;
 }
 
@@ -88,6 +101,7 @@ async function createPatientInner(form: FormData): Promise<FormState> {
   const { error: enrollError } = await supabase.rpc('enroll_patient', {
     p_patient_id: patient.id, p_program_code: e.program, p_start_date: e.start,
     p_amount_paid: e.paid, p_paid_date: e.paidDate,
+    p_detail: e.detail, p_prepaid: e.prepaid, p_review_at_p2: e.reviewAtP2,
   });
   if (enrollError) {
     // Patient is saved; send them to the start-a-program form to fix and retry.
@@ -113,6 +127,7 @@ async function enrollExistingInner(patientId: string, form: FormData): Promise<F
   const { error } = await supabase.rpc('enroll_patient', {
     p_patient_id: patientId, p_program_code: e.program, p_start_date: e.start,
     p_amount_paid: e.paid, p_paid_date: e.paidDate,
+    p_detail: e.detail, p_prepaid: e.prepaid, p_review_at_p2: e.reviewAtP2,
   });
   if (error) return { error: friendly(error.message) };
 

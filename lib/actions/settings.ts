@@ -107,7 +107,7 @@ export async function updateProgram(code: string, _prev: SettingsState, form: Fo
     if (f === 'wholesale_rate') n = n > 1 ? n / 100 : n; // accept 50 or 0.5
     values[f] = n;
   }
-  if (values.price == null) return { error: 'The program needs a price.' };
+  if (form.has('price') && values.price == null) return { error: 'The program needs a price.' };
 
   const { data, error } = await supabase.from('program').update(values).eq('code', code).select('code');
   if (error) return { error: friendly(error.message) };

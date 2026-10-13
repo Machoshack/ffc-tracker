@@ -12,6 +12,8 @@ const PROGRAMS = [
   { code: 'FHE', label: 'FHE' },
   { code: 'P1', label: 'Protocol I' },
   { code: 'P2', label: 'Protocol II' },
+  { code: 'LAB', label: 'Labs' },
+  { code: 'FT', label: 'Functional test' },
 ];
 
 export default async function TimelinePage({ searchParams }: { searchParams: Promise<TimelineParams> }) {
@@ -23,7 +25,7 @@ export default async function TimelinePage({ searchParams }: { searchParams: Pro
 
   let eq = supabase
     .from('v_enrollments')
-    .select('enrollment_id, patient_id, patient_code, display_name, program_code, start_date, status, current_stage, days_in_stage, overdue_steps, next_due, planned_end, completed_on');
+    .select('enrollment_id, patient_id, patient_code, display_name, program_code, start_date, status, current_stage, days_in_stage, overdue_steps, next_due, planned_end, completed_on, detail');
   if (win.mode === 'year') {
     // Anyone in a program at any point during the year, finished or not.
     eq = eq
@@ -40,7 +42,7 @@ export default async function TimelinePage({ searchParams }: { searchParams: Pro
   const { data: steps } = ids.length
     ? await supabase
         .from('v_steps')
-        .select('enrollment_id, program_code, stage_name, stage_sort, step_sort, step_name, owner_role, due_date, status, completed_on, is_blocked')
+        .select('enrollment_id, program_code, stage_name, stage_sort, step_sort, step_name, owner_role, due_date, status, completed_on, is_blocked, optional')
         .in('enrollment_id', ids)
     : { data: [] };
 

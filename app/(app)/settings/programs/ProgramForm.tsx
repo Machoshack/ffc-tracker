@@ -4,7 +4,7 @@ import { useActionState } from 'react';
 import { updateProgram, type SettingsState } from '@/lib/actions/settings';
 
 export type ProgramSettings = {
-  code: string; name: string; price: number; consult_cost: number; test_budget: number | null;
+  code: string; name: string; kind?: string; price: number; consult_cost: number; test_budget: number | null;
   supplement_budget: number | null; wholesale_rate: number; upgrade_to_code: string | null; upgrade_window_days: number | null;
 };
 
@@ -34,7 +34,9 @@ export function ProgramForm({ program: p }: { program: ProgramSettings }) {
         <input name="name" defaultValue={p.name} className="flex-1 rounded border border-transparent px-1 py-0.5 font-semibold hover:border-line focus:border-brand focus:outline-none" />
       </div>
       <div className="grid gap-3 sm:grid-cols-3">
-        <Field label="Price" name="price" value={Number(p.price)} prefix="$" />
+        {p.kind === 'followup'
+          ? <p className="text-sm text-muted sm:col-span-3">Follow-up: no program price. Functional tests record whether they were prepaid.</p>
+          : <Field label="Price" name="price" value={Number(p.price)} prefix="$" />}
         {isP1 && (
           <>
             <Field label="Consults and staff" name="consult_cost" value={Number(p.consult_cost)} prefix="$" hint="Fixed cost per patient" />
