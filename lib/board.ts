@@ -3,7 +3,7 @@
 
 export const PROGRAM_ORDER = ['TS', 'FHE', 'P1', 'P2', 'LAB', 'FT'] as const;
 export const PROGRAM_LABEL: Record<string, string> = {
-  TS: 'Two-Step', FHE: 'FHE', P1: 'Protocol I', P2: 'Protocol II', LAB: 'Labs', FT: 'Functional test',
+  TS: 'Two-Step', FHE: 'FHE', P1: 'Protocol I', P2: 'Protocol II', LAB: 'Labs', FT: 'Tests',
 };
 
 export type FheProgress = { done: number; total: number; next: string | null };

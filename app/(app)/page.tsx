@@ -13,7 +13,7 @@ const PROGRAMS = [
   { code: 'P1', label: 'Protocol I' },
   { code: 'P2', label: 'Protocol II' },
   { code: 'LAB', label: 'Labs' },
-  { code: 'FT', label: 'Functional test' },
+  { code: 'FT', label: 'Tests' },
 ];
 
 export default async function TimelinePage({ searchParams }: { searchParams: Promise<TimelineParams> }) {

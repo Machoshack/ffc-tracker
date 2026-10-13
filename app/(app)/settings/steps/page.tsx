@@ -8,7 +8,7 @@ const ORDER = [
   { code: 'P1', label: 'Protocol I' },
   { code: 'P2', label: 'Protocol II' },
   { code: 'LAB', label: 'Labs' },
-  { code: 'FT', label: 'Functional test' },
+  { code: 'FT', label: 'Tests' },
 ];
 
 export default async function StepSettingsPage({ searchParams }: { searchParams: Promise<{ program?: string }> }) {
