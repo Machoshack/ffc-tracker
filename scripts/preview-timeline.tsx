@@ -33,7 +33,7 @@ const body = renderToStaticMarkup(
   <div className="min-h-screen">
     <header className="border-b border-line bg-white">
       <div className="mx-auto flex max-w-7xl items-center gap-6 px-4 py-3">
-        <span className="font-semibold text-brand">FFC Tracker</span>
+        <span className="font-semibold text-brand">Waypoint</span>
         <nav className="flex gap-4 text-sm"><a className="text-ink">Timeline</a></nav>
         <div className="ml-auto text-sm text-muted">Preview with fake data</div>
       </div>
@@ -48,6 +48,6 @@ const body = renderToStaticMarkup(
 
 writeFileSync(
   outFile,
-  `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>FFC Tracker Preview</title><style>${readFileSync(cssFile, 'utf8')}</style></head><body class="min-h-screen font-sans antialiased">${body}</body></html>`,
+  `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Waypoint Preview</title><style>${readFileSync(cssFile, 'utf8')}</style></head><body class="min-h-screen font-sans antialiased">${body}</body></html>`,
 );
 console.log(`wrote ${outFile}`);

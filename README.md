@@ -1,4 +1,6 @@
-# FFC Patient Tracker
+# Waypoint
+
+Fresh Fit Consulting's internal app (repository: ffc-tracker).
 
 Internal app for Fresh Fit Consulting to track patients through programs, steps owed, P1 supplement budgets and margin, and device rentals.
 
