@@ -25,6 +25,7 @@ See `BACKLOG.md` for decisions made but not built yet.
 - `supabase/migrations/0011_followups.sql`: Lab and Functional test follow-ups, optional steps, follow-ups may overlap Protocol II
 - `supabase/seed.sql`: fake patients and staff only
 - `supabase/remove-demo-data.sql`: removes the fake patients and deactivates the fake staff (run once in the SQL Editor)
+- `supabase/remove-demo-staff.sql`: deletes the fake staff accounts; real staff (with an email) are kept
 - `tests/run-tests.mjs`: 100 checks run against a throwaway database
 
 ## Run locally
