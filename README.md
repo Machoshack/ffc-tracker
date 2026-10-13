@@ -1,4 +1,4 @@
-# Waypoint
+# FFC Waypoint
 
 Fresh Fit Consulting's internal app (repository: ffc-tracker).
 

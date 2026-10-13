@@ -39,7 +39,7 @@ export default function LoginPage() {
   return (
     <main className="flex min-h-screen items-center justify-center px-4">
       <form onSubmit={onSubmit} className="w-full max-w-sm rounded-lg border border-line bg-white p-6 shadow-sm">
-        <h1 className="text-lg font-semibold">Waypoint</h1>
+        <h1 className="text-lg font-semibold">FFC Waypoint</h1>
         <p className="mb-5 text-sm text-muted">
           {mode === 'login' ? 'Fresh Fit Consulting staff login' : 'Set or reset your password'}
         </p>

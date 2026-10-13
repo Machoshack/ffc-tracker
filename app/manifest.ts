@@ -3,8 +3,8 @@ import type { MetadataRoute } from 'next';
 // Lets staff add the tracker to a phone's home screen and open it like an app.
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'Waypoint',
-    short_name: 'Waypoint',
+    name: 'FFC Waypoint',
+    short_name: 'FFC Waypoint',
     description: 'Fresh Fit Consulting patient programs and schedules',
     start_url: '/',
     display: 'standalone',

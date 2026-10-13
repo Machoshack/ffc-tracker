@@ -33,7 +33,7 @@ const body = renderToStaticMarkup(
   <div className="min-h-screen">
     <header className="border-b border-line bg-white">
       <div className="mx-auto flex max-w-7xl items-center gap-6 px-4 py-3">
-        <span className="font-semibold text-brand">Waypoint</span>
+        <span className="font-semibold text-brand">FFC Waypoint</span>
         <nav className="flex gap-4 text-sm"><a className="text-ink">Timeline</a></nav>
         <div className="ml-auto text-sm text-muted">Preview with fake data</div>
       </div>

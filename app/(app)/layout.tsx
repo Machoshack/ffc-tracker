@@ -38,7 +38,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <div className="min-h-screen">
       <header className="border-b border-line bg-white">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
-          <span className="font-semibold text-brand">Waypoint</span>
+          <span className="font-semibold text-brand">FFC Waypoint</span>
           <nav className="order-last -mx-4 flex w-[calc(100%+2rem)] gap-5 overflow-x-auto whitespace-nowrap px-4 text-sm sm:order-none sm:mx-0 sm:w-auto sm:px-0">
             {[...NAV, ...(staff.role === 'admin' ? [{ href: '/settings', label: 'Settings' }] : [])].map((n) => (
               <Link key={n.href} href={n.href} className="text-ink hover:text-brand">{n.label}</Link>
