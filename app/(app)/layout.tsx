@@ -3,11 +3,11 @@ import { getCurrentStaff } from '@/lib/supabase/server';
 
 const NAV = [
   { href: '/', label: 'Timeline' },
-  { href: '/queue', label: 'My queue' },
   { href: '/pipeline', label: 'Pipeline' },
-  { href: '/patients', label: 'Patients' },
   { href: '/dashboard', label: 'Dashboard' },
-  { href: '/margin', label: 'P1 margin' },
+  { href: '/queue', label: 'Queue' },
+  { href: '/patients', label: 'Patients' },
+  { href: '/margin', label: 'P1 Margin' },
   // Devices comes later. Settings shows for admins only.
 ];
 

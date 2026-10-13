@@ -63,7 +63,7 @@ export default async function QueuePage({ searchParams }: { searchParams: Promis
     <div className="mx-auto max-w-3xl">
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold">My queue</h1>
+          <h1 className="text-xl font-semibold">Queue</h1>
           <p className="text-sm text-muted">
             {groups[0].items.length} overdue · {groups[1].items.length} due today
           </p>

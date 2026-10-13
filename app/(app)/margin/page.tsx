@@ -49,7 +49,7 @@ export default async function MarginPage({ searchParams }: { searchParams: Promi
     <div>
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold">Protocol I margin</h1>
+          <h1 className="text-xl font-semibold">Protocol I Margin</h1>
           <p className="text-sm text-muted">
             Fee minus consults and staff, tests, and supplements (at wholesale). Lowest margin first.
           </p>
