@@ -483,5 +483,30 @@ console.log('\nFollow-ups: labs and functional tests');
     `select enroll_patient('${e2}', 'FHE', current_date, 950)`, /one_open_enrollment_per_patient/);
 }
 
+// ---------------------------------------------------------------------------
+console.log('\nSupplement size, dose, run-out and refills');
+{
+  const db = await freshDb({ seed: true });
+  const e = (await one(db, `select e.id from enrollment e join patient p on p.id = e.patient_id where p.patient_code = 'IFAK95'`)).id;
+  const a = await one(db, `insert into supplement_log (enrollment_id, item, retail_price, given_on, size, unit_form, packages, daily_dose)
+                           values ($1, 'Omega Plus', 62, '2026-10-13', 90, 'capsules', 1, 2) returning run_out_date`, [e]);
+  check('90 capsules at 2 a day, given Oct 13, runs out Nov 27', iso(a.run_out_date) === '2026-11-27', `(got ${iso(a.run_out_date)})`);
+  const b = await one(db, `insert into supplement_log (enrollment_id, item, retail_price, given_on, size, unit_form, packages, daily_dose)
+                           values ($1, 'Vitamin D Supreme', 40, '2026-10-13', 60, 'capsules', 2, 1) returning id, run_out_date`, [e]);
+  check('Two bottles of 60 at 1 a day lasts 120 days', iso(b.run_out_date) === '2027-02-10', `(got ${iso(b.run_out_date)})`);
+  const c = await one(db, `insert into supplement_log (enrollment_id, item, retail_price, given_on) values ($1, 'Unknown size', 30, '2026-10-13') returning run_out_date`, [e]);
+  check('No size or dose means no run-out date', c.run_out_date === null);
+  await db.query(`update supplement_log set daily_dose = 2 where id = $1`, [b.id]);
+  const b2 = await one(db, `select run_out_date from supplement_log where id = $1`, [b.id]);
+  check('Changing the dose moves the run-out date (now 60 days, Dec 12)', iso(b2.run_out_date) === '2026-12-12', `(got ${iso(b2.run_out_date)})`);
+  await db.query(`insert into supplement_log (enrollment_id, item, retail_price, given_on, size, unit_form, packages, daily_dose)
+                  values ($1, ' omega plus ', 62, '2026-11-20', 90, 'capsules', 1, 2)`, [e]);
+  const old = await one(db, `select refill_status from supplement_log where enrollment_id = $1 and given_on = '2026-10-13' and item = 'Omega Plus'`, [e]);
+  check('Logging the same supplement again marks the earlier one refilled', old.refill_status === 'refilled');
+  const open = await rows(db, `select item from v_supplement_supply where enrollment_id = $1 and refill_status is null and run_out_date is not null order by item`, [e]);
+  check('Refill list shows the new Omega and the Vitamin D', open.map((r) => r.item.trim().toLowerCase()).join() === 'omega plus,vitamin d supreme',
+        `(got ${open.map((r) => r.item).join()})`);
+}
+
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed ? 1 : 0);

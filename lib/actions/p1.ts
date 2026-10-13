@@ -8,10 +8,36 @@ export type P1State = { error?: string; needsApproval?: { overBy: number }; ok?:
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const money = (v: FormDataEntryValue | null) => Number(String(v ?? '').replace(/[$,\s]/g, ''));
+const UNIT_FORMS = ['capsules', 'softgels', 'tablets', 'scoops', 'mL', 'drops', 'packets'];
 
 function refresh(patientId: string) {
   revalidatePath(`/patients/${patientId}`);
   revalidatePath('/margin');
+  revalidatePath('/queue');
+}
+
+// Change the daily dose; the run-out date updates with it.
+export async function updateDose(id: string, patientId: string, dose: number): Promise<P1State> {
+  const { supabase, staff } = await getCurrentStaff();
+  if (!staff) return { error: 'You are not logged in as staff.' };
+  if (!Number.isFinite(dose) || dose <= 0) return { error: 'Enter a dose above 0.' };
+  const { data, error } = await supabase.from('supplement_log').update({ daily_dose: dose }).eq('id', id).select('id');
+  if (error) return { error: `Could not save: ${error.message}` };
+  if (!data?.length) return { error: 'Nothing was changed.' };
+  refresh(patientId);
+  return { ok: Date.now() };
+}
+
+// Close a refill reminder ("not refilling"), or reopen it.
+export async function setRefillStatus(id: string, patientId: string, status: 'stopped' | null): Promise<P1State> {
+  const { supabase, staff } = await getCurrentStaff();
+  if (!staff) return { error: 'You are not logged in as staff.' };
+  const { data, error } = await supabase.from('supplement_log')
+    .update({ refill_status: status, refill_updated_on: status ? todayInNewYork() : null }).eq('id', id).select('id');
+  if (error) return { error: `Could not save: ${error.message}` };
+  if (!data?.length) return { error: 'Nothing was changed.' };
+  refresh(patientId);
+  return { ok: Date.now() };
 }
 
 export async function addSupplement(
@@ -21,16 +47,28 @@ export async function addSupplement(
   if (!staff) return { error: 'You are not logged in as staff.' };
 
   const item = String(form.get('item') ?? '').trim();
-  const retail = money(form.get('retail_price'));
+  const size = Number(form.get('size'));
+  const unitForm = String(form.get('unit_form') ?? '');
+  const packages = Number(form.get('packages') || 1);
+  const dose = Number(form.get('daily_dose'));
+  const retailEach = money(form.get('retail_price'));
   const wholesaleRaw = String(form.get('wholesale_cost') ?? '').trim();
-  const wholesale = wholesaleRaw ? money(wholesaleRaw) : null;
+  const wholesaleEach = wholesaleRaw ? money(wholesaleRaw) : null;
   const date = String(form.get('given_on') ?? '');
   const approved = form.get('approve_over') === '1';
 
   if (!item) return { error: 'Enter the supplement.' };
-  if (!Number.isFinite(retail) || retail <= 0) return { error: 'Enter the retail price.' };
-  if (wholesale !== null && (!Number.isFinite(wholesale) || wholesale < 0)) return { error: 'Wholesale cost must be a number.' };
+  if (!Number.isInteger(size) || size <= 0) return { error: 'Enter the size (how many per bottle).' };
+  if (!UNIT_FORMS.includes(unitForm)) return { error: 'Pick the form (capsules, scoops...).' };
+  if (!Number.isInteger(packages) || packages <= 0 || packages > 50) return { error: 'Enter how many bottles.' };
+  if (!Number.isFinite(dose) || dose <= 0) return { error: 'Enter the dose per day.' };
+  if (!Number.isFinite(retailEach) || retailEach <= 0) return { error: 'Enter the retail price.' };
+  if (wholesaleEach !== null && (!Number.isFinite(wholesaleEach) || wholesaleEach < 0)) return { error: 'Wholesale cost must be a number.' };
   if (!ISO_DATE.test(date) || date > todayInNewYork()) return { error: 'Pick the date it was given (not in the future).' };
+
+  // Prices are entered per bottle; totals go on the record and against the budget.
+  const retail = Math.round(retailEach * packages * 100) / 100;
+  const wholesale = wholesaleEach === null ? null : Math.round(wholesaleEach * packages * 100) / 100;
 
   // Budget check before saving. Wholesale defaults to the program's rate (50%) unless entered.
   const { data: check, error: checkError } = await supabase
@@ -45,6 +83,7 @@ export async function addSupplement(
 
   const { error } = await supabase.from('supplement_log').insert({
     enrollment_id: enrollmentId, item, retail_price: retail, wholesale_cost: wholesale, given_on: date,
+    size, unit_form: unitForm, packages, daily_dose: dose,
   });
   if (error) return { error: `Could not save: ${error.message}` };
   refresh(patientId);

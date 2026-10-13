@@ -117,7 +117,7 @@ export default async function PatientPage({
     const [{ data: prog }, { data: supp }, { data: tst }, { data: m }] = await Promise.all([
       supabase.from('program').select('supplement_budget, wholesale_rate').eq('code', 'P1').single(),
       supabase.from('supplement_log')
-        .select('id, item, retail_price, wholesale_cost, given_on, staff_user:given_by(name)')
+        .select('id, item, retail_price, wholesale_cost, given_on, size, unit_form, packages, daily_dose, run_out_date, refill_status, staff_user:given_by(name)')
         .eq('enrollment_id', current.enrollment_id).order('given_on', { ascending: false }),
       supabase.from('test_cost_log').select('id, test_name, cost, logged_on')
         .eq('enrollment_id', current.enrollment_id).order('logged_on', { ascending: false }),

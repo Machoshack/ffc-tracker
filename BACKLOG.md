@@ -2,7 +2,10 @@
 
 Decisions made but not built yet.
 
-## Supplement catalog and run-out dates (Protocol I)
+## Supplement catalog (Protocol I)
+
+Built already: size, form, bottles, dose per day, run-out date, dose changes, 14-day refill reminders in the Queue (typed in by hand).
+Still to do: the catalog, so picking a product and size fills in form, size and prices.
 
 Waiting on: Alan trimming the current supplement list (100+ products) to the ones FFC will stock.
 

@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { getCurrentStaff } from '@/lib/supabase/server';
 import { addDays, todayInNewYork, weekdayDate } from '@/lib/dates';
 import { QuickDone } from './QuickDone';
+import { NotRefilling } from './RefillActions';
 
 type QueueStep = {
   step_id: string;
@@ -50,6 +51,22 @@ export default async function QueuePage({ searchParams }: { searchParams: Promis
     q = q.eq('owner_role', who);
   }
   const { data, error } = await q;
+
+  // Supplements running out within 14 days (staff work, so not on the physician view).
+  const showRefills = who === 'all' || who === 'staff' || (who === 'mine' && staff?.role !== 'physician');
+  const { data: refillRows } = showRefills
+    ? await supabase.from('v_supplement_supply')
+        .select('id, patient_id, patient_code, item, size, unit_form, packages, daily_dose, run_out_date')
+        .in('enrollment_status', ['active', 'paused'])
+        .is('refill_status', null)
+        .not('run_out_date', 'is', null)
+        .lte('run_out_date', addDays(today, 14))
+        .order('run_out_date')
+    : { data: [] };
+  const refills = (refillRows ?? []) as {
+    id: string; patient_id: string; patient_code: string; item: string; size: number; unit_form: string;
+    packages: number; daily_dose: number; run_out_date: string;
+  }[];
   // Optional steps (like "bloodwork drawn") show while upcoming but never land in Overdue.
   const steps = ((data ?? []) as QueueStep[]).filter((s) => !s.optional || s.due_date >= today);
 
@@ -83,6 +100,40 @@ export default async function QueuePage({ searchParams }: { searchParams: Promis
       {error && <p className="mb-4 rounded border border-late bg-white p-3 text-late">Could not load: {error.message}</p>}
 
       <div className="space-y-5">
+        {showRefills && (
+          <section>
+            <h2 className="mb-2 text-sm font-semibold text-ink">
+              Refills due <span className="font-normal text-muted">({refills.length}) · supplements running out within 14 days</span>
+            </h2>
+            {refills.length === 0 ? (
+              <p className="rounded border border-dashed border-line px-4 py-3 text-sm text-muted">Nothing running out.</p>
+            ) : (
+              <ul className="divide-y divide-line overflow-hidden rounded border border-line bg-white">
+                {refills.map((r) => (
+                  <li key={r.id} className="flex items-start gap-3 px-4 py-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium">{r.item}</div>
+                      <div className="mt-0.5 text-sm">
+                        <Link href={`/patients/${r.patient_id}`} className="text-brand underline-offset-2 hover:underline">
+                          {r.patient_code}
+                        </Link>
+                        <span className="text-muted"> · {r.size} {r.unit_form}{r.packages > 1 ? ` × ${r.packages}` : ''} · {Number(r.daily_dose)} a day</span>
+                      </div>
+                      <div className={`mt-0.5 text-xs ${r.run_out_date < today ? 'font-medium text-late' : 'text-muted'}`}>
+                        {r.run_out_date < today ? 'Ran out' : 'Runs out'} {weekdayDate(r.run_out_date)}
+                      </div>
+                    </div>
+                    <NotRefilling id={r.id} patientId={r.patient_id} />
+                  </li>
+                ))}
+              </ul>
+            )}
+            {refills.length > 0 && (
+              <p className="mt-1 text-xs text-muted">Logging the same supplement again on the patient’s page clears it from this list.</p>
+            )}
+          </section>
+        )}
+
         {groups.map((g) => (
           <section key={g.title}>
             <h2 className={`mb-2 text-sm font-semibold ${g.tone}`}>

@@ -23,10 +23,11 @@ See `BACKLOG.md` for decisions made but not built yet.
 - `supabase/migrations/0009_p1_cost_model.sql`: P1 consults and staff $1,500, testing budget $900, supplements $600
 - `supabase/migrations/0010_fhe_sessions.sql`: FHE Visit 1 and 2 renamed Session 1 and 2
 - `supabase/migrations/0011_followups.sql`: Lab and Functional test follow-ups, optional steps, follow-ups may overlap Protocol II
+- `supabase/migrations/0012_supplement_supply.sql`: supplement size, form, bottles, dose, run-out date, refill reminders
 - `supabase/seed.sql`: fake patients and staff only
 - `supabase/remove-demo-data.sql`: removes the fake patients and deactivates the fake staff (run once in the SQL Editor)
 - `supabase/remove-demo-staff.sql`: deletes the fake staff accounts; real staff (with an email) are kept
-- `tests/run-tests.mjs`: 100 checks run against a throwaway database
+- `tests/run-tests.mjs`: 106 checks run against a throwaway database
 
 ## Run locally
 
