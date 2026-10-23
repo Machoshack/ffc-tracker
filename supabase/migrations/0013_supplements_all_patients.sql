@@ -1,7 +1,7 @@
 -- FFC Waypoint: supplements for every patient, and the supplement list from Square.
 -- 1. A supplement belongs to the patient. It counts against the Protocol I budget only when it is
 --    given while that patient's Protocol I is open (active or paused).
--- 2. Products and sizes are copied from Square (reporting category "Products"). Square stays the
+-- 2. Products and sizes are copied from Square (reporting category "Product"). Square stays the
 --    source for names and prices; Waypoint adds units per bottle and lets admins hide products.
 -- Safe to run more than once.
 

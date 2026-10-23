@@ -55,7 +55,7 @@ node tests/run-tests.mjs
 - One open program per patient.
 - FHE to P2 upgrade within 31 days of the FHE finishing: finished steps carry over, payment is credited.
 - Supplements: tracked for every patient, with run-out dates and refill reminders 14 days ahead. They count against the Protocol I budget ($600 wholesale) only while the patient's Protocol I is open. Wholesale is 50% of retail unless entered. The app warns before an entry would go over.
-- Supplement list: copied from Square's "Products" reporting category twice a day or on demand. Names and prices follow Square. Any staff member can fill in units per bottle; only admins can hide products.
+- Supplement list: copied from Square's "Product" reporting category twice a day or on demand. Names and prices follow Square. Any staff member can fill in units per bottle; only admins can hide products.
 - P1 margin: fee minus $1,200 consults, $200 staff time, test costs, and supplement wholesale cost.
 - Only admins change programs, budgets and staff accounts, or delete records. Every change is logged with who made it. Nobody can edit the log.
 

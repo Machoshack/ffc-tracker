@@ -1,7 +1,7 @@
 // Reads the supplement list from Square. Server only: the Square token never reaches the browser.
 // Square is read, never changed. Only products and prices are read, no customer or sales data.
 
-export const SQUARE_CATEGORY = process.env.SQUARE_CATEGORY || 'Products';
+export const SQUARE_CATEGORY = process.env.SQUARE_CATEGORY || 'Product';
 export const UNIT_FORMS = ['capsules', 'softgels', 'tablets', 'scoops', 'mL', 'drops', 'packets'] as const;
 
 export type CatalogSize = {
@@ -44,8 +44,10 @@ export function guessSize(text: string): { size: number; form: string } | null {
 
 // Turns Square's catalog into the product list Waypoint keeps. Pure, so it can be tested without Square.
 export function toCatalogItems(objects: SquareObject[], categoryName = SQUARE_CATEGORY): { items: CatalogItem[]; categoryFound: boolean } {
+  // "Product" and "Products" both match, ignoring capitals.
+  const norm = (t: string) => t.trim().toLowerCase().replace(/s$/, '');
   const category = objects.find(
-    (o) => o.type === 'CATEGORY' && !o.is_deleted && o.category_data?.name?.trim().toLowerCase() === categoryName.toLowerCase(),
+    (o) => o.type === 'CATEGORY' && !o.is_deleted && norm(o.category_data?.name ?? '') === norm(categoryName),
   );
   if (!category) return { items: [], categoryFound: false };
 

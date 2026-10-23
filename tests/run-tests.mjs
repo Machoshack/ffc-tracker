@@ -643,7 +643,7 @@ console.log('\nReading the Square catalog');
   check('"2 lb" has no guess', guessSize('2 lb') === null);
 
   const objects = [
-    { type: 'CATEGORY', id: 'CAT-P', category_data: { name: 'Products' } },
+    { type: 'CATEGORY', id: 'CAT-P', category_data: { name: 'Product' } },
     { type: 'CATEGORY', id: 'CAT-S', category_data: { name: 'Services' } },
     { type: 'ITEM', id: 'I1', item_data: { name: 'Vitamin D Supreme', reporting_category: { id: 'CAT-P' }, variations: [
       { type: 'ITEM_VARIATION', id: 'V1', item_variation_data: { name: '60 caps', ordinal: 0, pricing_type: 'FIXED_PRICING', price_money: { amount: 2400 } } },
@@ -657,8 +657,9 @@ console.log('\nReading the Square catalog');
     { type: 'ITEM', id: 'I5', item_data: { name: 'Custom blend', reporting_category: { id: 'CAT-P' }, variations: [
       { type: 'ITEM_VARIATION', id: 'V6', item_variation_data: { name: 'Regular', pricing_type: 'VARIABLE_PRICING' } }] } },
   ];
-  const { items, categoryFound } = toCatalogItems(objects, 'products');
-  check('Finds the Products category', categoryFound);
+  const { items, categoryFound } = toCatalogItems(objects);
+  check('Finds the Product category by default', categoryFound);
+  check('"Products" also matches "Product"', toCatalogItems(objects, 'Products').categoryFound);
   check('Takes only Products items, skips services and archived ones', items.map((i) => i.name).join('|') ===
         'Vitamin D Supreme|Magnesium Glycinate 90 capsules|Custom blend', `(got ${items.map((i) => i.name).join('|')})`);
   check('Prices come across in dollars', items[0].sizes.map((s) => s.price).join() === '24,55');
