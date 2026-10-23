@@ -40,7 +40,8 @@ create trigger supplement_mark_refilled
   for each row execute function supplement_mark_refilled();
 
 -- Refill reminders: open supplements for active programs, with the patient.
-create or replace view v_supplement_supply with (security_invoker = true) as
+drop view if exists v_supplement_supply;
+create view v_supplement_supply with (security_invoker = true) as
 select sl.id, sl.enrollment_id, e.patient_id, p.patient_code, pr.code as program_code, e.status as enrollment_status,
        sl.item, sl.size, sl.unit_form, sl.packages, sl.daily_dose, sl.given_on, sl.run_out_date,
        sl.refill_status, sl.refill_updated_on

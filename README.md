@@ -24,10 +24,12 @@ See `BACKLOG.md` for decisions made but not built yet.
 - `supabase/migrations/0010_fhe_sessions.sql`: FHE Visit 1 and 2 renamed Session 1 and 2
 - `supabase/migrations/0011_followups.sql`: Lab and Functional test follow-ups, optional steps, follow-ups may overlap Protocol II
 - `supabase/migrations/0012_supplement_supply.sql`: supplement size, form, bottles, dose, run-out date, refill reminders
+- `supabase/migrations/0013_supplements_all_patients.sql`: supplements for every patient (P1 budget only while P1 is open), supplement list from Square
 - `supabase/seed.sql`: fake patients and staff only
 - `supabase/remove-demo-data.sql`: removes the fake patients and deactivates the fake staff (run once in the SQL Editor)
 - `supabase/remove-demo-staff.sql`: deletes the fake staff accounts; real staff (with an email) are kept
-- `tests/run-tests.mjs`: 106 checks run against a throwaway database
+- `lib/square.ts`: reads products from Square (read only)
+- `tests/run-tests.mjs`: 145 checks run against a throwaway database
 
 ## Run locally
 
@@ -52,7 +54,8 @@ node tests/run-tests.mjs
 - Hard blocks: FHE results consult waits for all three scores. Grip strength waits for body composition, BOLT waits for grip. Sleep score waits for the EEG device return. P1 Consultation 1 waits for Test 1 results. Two-Step Session 1 waits for payment. Each block can be switched off per step.
 - One open program per patient.
 - FHE to P2 upgrade within 31 days of the FHE finishing: finished steps carry over, payment is credited.
-- P1 supplements: wholesale is 50% of retail unless entered. Budget $600 wholesale. The app warns before an entry would go over.
+- Supplements: tracked for every patient, with run-out dates and refill reminders 14 days ahead. They count against the Protocol I budget ($600 wholesale) only while the patient's Protocol I is open. Wholesale is 50% of retail unless entered. The app warns before an entry would go over.
+- Supplement list: copied from Square's "Products" reporting category twice a day or on demand. Names and prices follow Square. Any staff member can fill in units per bottle; only admins can hide products.
 - P1 margin: fee minus $1,200 consults, $200 staff time, test costs, and supplement wholesale cost.
 - Only admins change programs, budgets and staff accounts, or delete records. Every change is logged with who made it. Nobody can edit the log.
 

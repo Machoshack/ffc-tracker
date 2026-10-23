@@ -52,12 +52,11 @@ export default async function QueuePage({ searchParams }: { searchParams: Promis
   }
   const { data, error } = await q;
 
-  // Supplements running out within 14 days (staff work, so not on the physician view).
+  // Supplements running out within 14 days, for every patient, in a program or not (staff work, so not on the physician view).
   const showRefills = who === 'all' || who === 'staff' || (who === 'mine' && staff?.role !== 'physician');
   const { data: refillRows } = showRefills
     ? await supabase.from('v_supplement_supply')
         .select('id, patient_id, patient_code, item, size, unit_form, packages, daily_dose, run_out_date')
-        .in('enrollment_status', ['active', 'paused'])
         .is('refill_status', null)
         .not('run_out_date', 'is', null)
         .lte('run_out_date', addDays(today, 14))

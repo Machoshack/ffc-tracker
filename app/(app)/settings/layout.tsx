@@ -5,6 +5,7 @@ const TABS = [
   { href: '/settings/staff', label: 'Staff' },
   { href: '/settings/programs', label: 'Programs' },
   { href: '/settings/steps', label: 'Program steps' },
+  { href: '/settings/supplements', label: 'Supplements' },
 ];
 
 export default async function SettingsLayout({ children }: { children: React.ReactNode }) {

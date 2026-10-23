@@ -358,7 +358,7 @@ console.log('\nFake data, screens, audit log, and access rules');
     await db.query(`delete from patient where id = $1`, [fes]);
   });
   const goneP = await one(db, `select count(*)::int as n from patient where id = $1`, [fes]);
-  const goneS = await one(db, `select count(*)::int as n from supplement_log sl join enrollment e on e.id = sl.enrollment_id where e.patient_id = $1`, [fes]);
+  const goneS = await one(db, `select count(*)::int as n from supplement_log where patient_id = $1`, [fes]);
   check('Admin can delete a patient, and their supplements go with them', goneP.n === 0 && goneS.n === 0);
   const logged = await one(db, `select count(*)::int as n from audit_log where record_type = 'patient' and action = 'delete' and record_id = $1`, [fes]);
   check('The deletion is recorded in the audit log', logged.n === 1);
@@ -506,6 +506,166 @@ console.log('\nSupplement size, dose, run-out and refills');
   const open = await rows(db, `select item from v_supplement_supply where enrollment_id = $1 and refill_status is null and run_out_date is not null order by item`, [e]);
   check('Refill list shows the new Omega and the Vitamin D', open.map((r) => r.item.trim().toLowerCase()).join() === 'omega plus,vitamin d supreme',
         `(got ${open.map((r) => r.item).join()})`);
+}
+
+// ---------------------------------------------------------------------------
+console.log('\nSupplements for every patient, and the Square list');
+{
+  const db = await freshDb({ seed: true });
+  const admin = (await one(db, `select id from staff_user where name = 'Admin Tester'`)).id;
+  const staff = (await one(db, `select id from staff_user where name = 'Front Desk Tester'`)).id;
+  const adminLogin = '11111111-1111-1111-1111-111111111111';
+  const staffLogin = '22222222-2222-2222-2222-222222222222';
+  const strangerLogin = '33333333-3333-3333-3333-333333333333';
+  await db.query(`update staff_user set auth_user_id = $1 where id = $2`, [adminLogin, admin]);
+  await db.query(`update staff_user set auth_user_id = $1 where id = $2`, [staffLogin, staff]);
+  const as = async (login, fn) => {
+    await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub', '${login}', false);`);
+    try { return await fn(); } finally { await db.exec(`reset role; select set_config('request.jwt.claim.sub', '', false);`); }
+  };
+  const newPatient = async (code) => (await one(db, `insert into patient (patient_code) values ($1) returning id`, [code])).id;
+
+  // Old Protocol I entries were moved onto the patient.
+  const missing = await one(db, `select count(*)::int as n from supplement_log where patient_id is null`);
+  check('Every existing supplement has a patient', missing.n === 0);
+
+  // A patient in no program.
+  const none = await newPatient('NONE80');
+  const a = await as(staffLogin, () => one(db,
+    `insert into supplement_log (patient_id, item, retail_price, given_on, size, unit_form, packages, daily_dose)
+     values ($1, 'Magnesium', 40, current_date - 80, 90, 'capsules', 1, 1) returning enrollment_id, wholesale_cost, given_by`, [none]));
+  check('Staff can log a supplement for a patient in no program', a && a.enrollment_id === null);
+  check('Wholesale still fills in at 50% of retail', Number(a.wholesale_cost) === 20);
+  const remind = await rows(db, `select item, counts_toward_p1 from v_supplement_supply where patient_id = $1 and refill_status is null
+                                 and run_out_date <= current_date + 14`, [none]);
+  check('Their refill shows in the reminders, not counted toward P1', remind.length === 1 && remind[0].counts_toward_p1 === false);
+
+  // A patient in Protocol I: counts against the budget.
+  const p1p = await newPatient('PONE81');
+  const p1e = (await one(db, `select enroll_patient($1, 'P1', current_date, 3000) as id`, [p1p])).id;
+  const b = await as(staffLogin, () => one(db,
+    `insert into supplement_log (patient_id, item, retail_price) values ($1, 'Omega Plus', 60) returning enrollment_id`, [p1p]));
+  check('A supplement for a Protocol I patient attaches to their Protocol I', b.enrollment_id === p1e);
+  const m = await one(db, `select supplement_cost from v_p1_margin where enrollment_id = $1`, [p1e]);
+  check('It counts against the P1 budget ($30 wholesale)', Number(m.supplement_cost) === 30, `(got ${m.supplement_cost})`);
+
+  // Protocol II patient: tracked, not counted.
+  const p2p = await newPatient('PTWO82');
+  await db.query(`select enroll_patient($1, 'P2', current_date, 1650)`, [p2p]);
+  const c = await one(db, `insert into supplement_log (patient_id, item, retail_price) values ($1, 'Vitamin D', 30) returning enrollment_id`, [p2p]);
+  check('A Protocol II patient’s supplement is not attached to any budget', c.enrollment_id === null);
+
+  // After Protocol I ends, new supplements stop counting.
+  await db.query(`update enrollment set status = 'completed', completed_on = current_date where id = $1`, [p1e]);
+  const d = await one(db, `insert into supplement_log (patient_id, item, retail_price) values ($1, 'Zinc', 20) returning enrollment_id`, [p1p]);
+  const m2 = await one(db, `select supplement_cost from v_p1_margin where enrollment_id = $1`, [p1e]);
+  check('Once Protocol I is finished, new supplements don’t count against it', d.enrollment_id === null && Number(m2.supplement_cost) === 30);
+
+  // Refill closes the earlier one even across programs.
+  await db.query(`insert into supplement_log (patient_id, item, retail_price) values ($1, 'omega plus', 60)`, [p1p]);
+  const old = await one(db, `select refill_status from supplement_log where patient_id = $1 and item = 'Omega Plus'`, [p1p]);
+  check('Logging Omega Plus again after Protocol I closes the earlier reminder', old.refill_status === 'refilled');
+
+  // Removing a program keeps the patient’s supplements; removing the patient removes them.
+  await as(adminLogin, () => db.query(`delete from enrollment where id = $1`, [p1e]));
+  const kept = await one(db, `select count(*)::int as n from supplement_log where patient_id = $1`, [p1p]);
+  check('Removing a program keeps the patient’s supplements', kept.n === 3, `(got ${kept.n})`);
+  await as(adminLogin, () => db.query(`delete from patient where id = $1`, [p1p]));
+  const gone = await one(db, `select count(*)::int as n from supplement_log where patient_id = $1`, [p1p]);
+  check('Removing the patient removes their supplements', gone.n === 0);
+
+  // Square list.
+  const square = [
+    { item_id: 'SQ-ITEM-1', name: 'Vitamin D Supreme', sizes: [
+      { variation_id: 'SQ-VAR-1A', name: '60 caps', price: 24, sort: 0, guess_size: 60, guess_form: 'capsules' },
+      { variation_id: 'SQ-VAR-1B', name: '180 caps', price: 55, sort: 1, guess_size: 180, guess_form: 'capsules' }] },
+    { item_id: 'SQ-ITEM-2', name: 'Whey Protein', sizes: [
+      { variation_id: 'SQ-VAR-2A', name: 'Regular', price: 68, sort: 0, guess_size: null, guess_form: null }] },
+    { item_id: 'SQ-ITEM-3', name: 'Gift card', sizes: [
+      { variation_id: 'SQ-VAR-3A', name: 'Regular', price: 50, sort: 0 }] },
+  ];
+  let refused = '';
+  try { await as(strangerLogin, () => db.query(`select sync_supplement_catalog($1)`, [JSON.stringify(square)])); } catch (e) { refused = e.message; }
+  check('Someone not on the staff list cannot sync', /not_staff/.test(refused), `(got: ${refused})`);
+  const r1 = await as(staffLogin, () => one(db, `select sync_supplement_catalog($1) as r`, [JSON.stringify(square)]));
+  check('Staff sync copies 3 products and 4 sizes', r1.r.products === 3 && r1.r.sizes === 4 && r1.r.new_products === 3, `(got ${JSON.stringify(r1.r)})`);
+  const guessed = await one(db, `select size, unit_form from supplement_size where square_variation_id = 'SQ-VAR-1B'`);
+  check('"180 caps" fills in 180 capsules', guessed.size === 180 && guessed.unit_form === 'capsules');
+
+  // Staff fill in units per bottle; they can't change prices or hide products.
+  const fill = await as(staffLogin, () => db.query(`update supplement_size set size = 30, unit_form = 'scoops' where square_variation_id = 'SQ-VAR-2A' returning id`));
+  check('Staff can fill in units per bottle', fill.rows.length === 1);
+  let priceErr = '';
+  try { await as(staffLogin, () => db.query(`update supplement_size set retail_price = 1 where square_variation_id = 'SQ-VAR-2A'`)); } catch (e) { priceErr = e.message; }
+  check('Staff cannot change a price (it comes from Square)', /permission denied/.test(priceErr), `(got: ${priceErr})`);
+  const staffHide = await as(staffLogin, () => db.query(`update supplement_product set hidden = true where square_item_id = 'SQ-ITEM-3' returning id`));
+  check('Staff cannot hide a product', staffHide.rows.length === 0);
+  const adminHide = await as(adminLogin, () => db.query(`update supplement_product set hidden = true where square_item_id = 'SQ-ITEM-3' returning id`));
+  check('Admin can hide a product', adminHide.rows.length === 1);
+
+  // Second sync: a price change, a rename, a product removed in Square.
+  square[0].sizes[0].price = 26;
+  square[1].name = 'Whey Protein Isolate';
+  square[1].sizes[0].guess_size = 25;
+  const r2 = await as(staffLogin, () => one(db, `select sync_supplement_catalog($1) as r`, [JSON.stringify([square[0], square[1]])]));
+  check('Second sync: 2 products, 1 removed', r2.r.products === 2 && r2.r.removed === 1, `(got ${JSON.stringify(r2.r)})`);
+  const price = await one(db, `select retail_price from supplement_size where square_variation_id = 'SQ-VAR-1A'`);
+  check('Price follows Square', Number(price.retail_price) === 26);
+  const whey = await one(db, `select sp.name, s.size from supplement_size s join supplement_product sp on sp.id = s.product_id where s.square_variation_id = 'SQ-VAR-2A'`);
+  check('Name follows Square; units entered by staff are kept', whey.name === 'Whey Protein Isolate' && whey.size === 30, `(got ${JSON.stringify(whey)})`);
+  const choices = await as(staffLogin, () => rows(db, `select product_name, size_name from v_supplement_choices order by product_name, sort`));
+  check('Pick list leaves out removed and hidden products', choices.map((x) => `${x.product_name} ${x.size_name}`).join('|') ===
+        'Vitamin D Supreme 60 caps|Vitamin D Supreme 180 caps|Whey Protein Isolate Regular', `(got ${choices.map((x) => x.product_name).join()})`);
+  const syncRow = await one(db, `select synced_at, result, synced_by from catalog_sync`);
+  check('Last sync time and who ran it are recorded', syncRow.synced_at !== null && syncRow.synced_by === staff);
+
+  // Logging from the pick list: same product, different size, closes the earlier reminder.
+  const s60 = (await one(db, `select id from supplement_size where square_variation_id = 'SQ-VAR-1A'`)).id;
+  const s180 = (await one(db, `select id from supplement_size where square_variation_id = 'SQ-VAR-1B'`)).id;
+  await db.query(`insert into supplement_log (patient_id, item, retail_price, size_id, given_on) values ($1, 'Vitamin D Supreme 60 caps', 26, $2, current_date - 30)`, [none, s60]);
+  await db.query(`insert into supplement_log (patient_id, item, retail_price, size_id) values ($1, 'Vitamin D Supreme 180 caps', 55, $2)`, [none, s180]);
+  const vd = await one(db, `select refill_status from supplement_log where patient_id = $1 and size_id = $2`, [none, s60]);
+  check('Switching to the bigger size closes the earlier reminder', vd.refill_status === 'refilled');
+}
+
+// ---------------------------------------------------------------------------
+console.log('\nReading the Square catalog');
+{
+  const { toCatalogItems, guessSize, choiceLabel } = await import('../lib/square.ts');
+  const g = (t) => JSON.stringify(guessSize(t));
+  check('"60 caps" reads as 60 capsules', g('60 caps') === '{"size":60,"form":"capsules"}');
+  check('"180 Vcaps" reads as 180 capsules', g('180 Vcaps') === '{"size":180,"form":"capsules"}');
+  check('"30 servings" reads as 30 scoops', g('30 servings') === '{"size":30,"form":"scoops"}');
+  check('"120 softgels" reads as 120 softgels', g('120 softgels') === '{"size":120,"form":"softgels"}');
+  check('"Regular" has no guess', guessSize('Regular') === null);
+  check('"Vitamin D3 5000 IU 60 caps" reads as 60 capsules', g('Vitamin D3 5000 IU 60 caps') === '{"size":60,"form":"capsules"}');
+  check('"90ct capsules" reads as 90 capsules', g('90ct capsules') === '{"size":90,"form":"capsules"}');
+  check('"2 lb" has no guess', guessSize('2 lb') === null);
+
+  const objects = [
+    { type: 'CATEGORY', id: 'CAT-P', category_data: { name: 'Products' } },
+    { type: 'CATEGORY', id: 'CAT-S', category_data: { name: 'Services' } },
+    { type: 'ITEM', id: 'I1', item_data: { name: 'Vitamin D Supreme', reporting_category: { id: 'CAT-P' }, variations: [
+      { type: 'ITEM_VARIATION', id: 'V1', item_variation_data: { name: '60 caps', ordinal: 0, pricing_type: 'FIXED_PRICING', price_money: { amount: 2400 } } },
+      { type: 'ITEM_VARIATION', id: 'V2', item_variation_data: { name: '180 caps', ordinal: 1, pricing_type: 'FIXED_PRICING', price_money: { amount: 5500 } } }] } },
+    { type: 'ITEM', id: 'I2', item_data: { name: 'Magnesium Glycinate 90 capsules', reporting_category: { id: 'CAT-P' }, variations: [
+      { type: 'ITEM_VARIATION', id: 'V3', item_variation_data: { name: 'Regular', pricing_type: 'FIXED_PRICING', price_money: { amount: 3200 } } }] } },
+    { type: 'ITEM', id: 'I3', item_data: { name: 'FHE', reporting_category: { id: 'CAT-S' }, variations: [
+      { type: 'ITEM_VARIATION', id: 'V4', item_variation_data: { name: 'Regular', price_money: { amount: 95000 } } }] } },
+    { type: 'ITEM', id: 'I4', item_data: { name: 'Old product', is_archived: true, reporting_category: { id: 'CAT-P' }, variations: [
+      { type: 'ITEM_VARIATION', id: 'V5', item_variation_data: { name: 'Regular', price_money: { amount: 100 } } }] } },
+    { type: 'ITEM', id: 'I5', item_data: { name: 'Custom blend', reporting_category: { id: 'CAT-P' }, variations: [
+      { type: 'ITEM_VARIATION', id: 'V6', item_variation_data: { name: 'Regular', pricing_type: 'VARIABLE_PRICING' } }] } },
+  ];
+  const { items, categoryFound } = toCatalogItems(objects, 'products');
+  check('Finds the Products category', categoryFound);
+  check('Takes only Products items, skips services and archived ones', items.map((i) => i.name).join('|') ===
+        'Vitamin D Supreme|Magnesium Glycinate 90 capsules|Custom blend', `(got ${items.map((i) => i.name).join('|')})`);
+  check('Prices come across in dollars', items[0].sizes.map((s) => s.price).join() === '24,55');
+  check('Units guessed from the product name when the size is "Regular"', items[1].sizes[0].guess_size === 90 && items[1].sizes[0].guess_form === 'capsules');
+  check('Variable price comes across as no set price', items[2].sizes[0].price === null);
+  check('A missing category is reported', toCatalogItems(objects, 'Supplements').categoryFound === false);
+  check('Pick list label drops "Regular"', choiceLabel('Custom blend', 'Regular') === 'Custom blend' && choiceLabel('Vitamin D', '60 caps') === 'Vitamin D, 60 caps');
 }
 
 console.log(`\n${passed} passed, ${failed} failed\n`);

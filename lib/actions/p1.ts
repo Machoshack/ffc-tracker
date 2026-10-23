@@ -40,13 +40,14 @@ export async function setRefillStatus(id: string, patientId: string, status: 'st
   return { ok: Date.now() };
 }
 
-export async function addSupplement(
-  enrollmentId: string, patientId: string, _prev: P1State, form: FormData,
-): Promise<P1State> {
+// Logs a supplement for any patient. It counts against the Protocol I budget only while the
+// patient's Protocol I is open (the database attaches it). Picked from the Square list, or typed in.
+export async function addSupplement(patientId: string, _prev: P1State, form: FormData): Promise<P1State> {
   const { supabase, staff } = await getCurrentStaff();
   if (!staff) return { error: 'You are not logged in as staff.' };
 
-  const item = String(form.get('item') ?? '').trim();
+  const sizeId = String(form.get('size_id') ?? '').trim() || null;
+  let item = String(form.get('item') ?? '').trim();
   const size = Number(form.get('size'));
   const unitForm = String(form.get('unit_form') ?? '');
   const packages = Number(form.get('packages') || 1);
@@ -57,7 +58,18 @@ export async function addSupplement(
   const date = String(form.get('given_on') ?? '');
   const approved = form.get('approve_over') === '1';
 
-  if (!item) return { error: 'Enter the supplement.' };
+  // From the Square list: the name comes from there, and units per bottle are saved back for next time.
+  let chosen: { size: number | null; unit_form: string | null } | null = null;
+  if (sizeId) {
+    const { data } = await supabase.from('supplement_size')
+      .select('name, size, unit_form, supplement_product(name)').eq('id', sizeId).maybeSingle();
+    if (!data) return { error: 'That product is no longer in the list. Pick it again.' };
+    const product = (data.supplement_product as unknown as { name: string } | null)?.name ?? '';
+    item = /^regular$/i.test(data.name.trim()) ? product : `${product}, ${data.name}`;
+    chosen = { size: data.size, unit_form: data.unit_form };
+  }
+
+  if (!item) return { error: 'Pick a supplement, or type one in.' };
   if (!Number.isInteger(size) || size <= 0) return { error: 'Enter the size (how many per bottle).' };
   if (!UNIT_FORMS.includes(unitForm)) return { error: 'Pick the form (capsules, scoops...).' };
   if (!Number.isInteger(packages) || packages <= 0 || packages > 50) return { error: 'Enter how many bottles.' };
@@ -70,19 +82,29 @@ export async function addSupplement(
   const retail = Math.round(retailEach * packages * 100) / 100;
   const wholesale = wholesaleEach === null ? null : Math.round(wholesaleEach * packages * 100) / 100;
 
-  // Budget check before saving. Wholesale defaults to the program's rate (50%) unless entered.
-  const { data: check, error: checkError } = await supabase
-    .rpc('supplement_check', { p_enrollment: enrollmentId, p_new_retail: retail }).single<{
-      budget: number | null; remaining_now: number; remaining_after: number;
-    }>();
-  if (checkError) return { error: `Could not check the budget: ${checkError.message}` };
-  if (check?.budget != null) {
-    const after = wholesale !== null ? Number(check.remaining_now) - wholesale : Number(check.remaining_after);
-    if (after < 0 && !approved) return { needsApproval: { overBy: Math.abs(after) } };
+  // Budget check, only for a patient whose Protocol I is open.
+  const { data: p1 } = await supabase.from('v_enrollments').select('enrollment_id')
+    .eq('patient_id', patientId).eq('program_code', 'P1').in('status', ['active', 'paused']).limit(1).maybeSingle();
+  if (p1) {
+    const { data: check, error: checkError } = await supabase
+      .rpc('supplement_check', { p_enrollment: p1.enrollment_id, p_new_retail: retail }).single<{
+        budget: number | null; remaining_now: number; remaining_after: number;
+      }>();
+    if (checkError) return { error: `Could not check the budget: ${checkError.message}` };
+    if (check?.budget != null) {
+      const after = wholesale !== null ? Number(check.remaining_now) - wholesale : Number(check.remaining_after);
+      if (after < 0 && !approved) return { needsApproval: { overBy: Math.abs(after) } };
+    }
+  }
+
+  // Units per bottle were missing in the list: save them so nobody has to enter them again.
+  if (sizeId && chosen && (chosen.size == null || chosen.unit_form == null)) {
+    await supabase.from('supplement_size').update({ size, unit_form: unitForm }).eq('id', sizeId);
+    revalidatePath('/settings/supplements');
   }
 
   const { error } = await supabase.from('supplement_log').insert({
-    enrollment_id: enrollmentId, item, retail_price: retail, wholesale_cost: wholesale, given_on: date,
+    patient_id: patientId, size_id: sizeId, item, retail_price: retail, wholesale_cost: wholesale, given_on: date,
     size, unit_form: unitForm, packages, daily_dose: dose,
   });
   if (error) return { error: `Could not save: ${error.message}` };

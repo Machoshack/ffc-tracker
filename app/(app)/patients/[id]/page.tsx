@@ -6,7 +6,9 @@ import { StepRow, type StepView } from './StepRow';
 import { UpgradeBox } from './UpgradeBox';
 import { DeletePatient } from './DeletePatient';
 import { collapsedLabel } from '@/lib/board';
-import { P1Panel, type MarginRow, type SupplementRow, type TestRow } from './P1Panel';
+import { P1Panel, type MarginRow, type TestRow } from './P1Panel';
+import { SupplementsPanel, type SupplementChoice, type SupplementRow } from './SupplementsPanel';
+import { choiceLabel } from '@/lib/square';
 
 type Enrollment = {
   enrollment_id: string;
@@ -111,14 +113,11 @@ export default async function PatientPage({
   const { data: p2 } = upgrade
     ? await supabase.from('program').select('price').eq('code', 'P2').maybeSingle()
     : { data: null };
-  // Protocol I: supplements, tests, budget and margin.
-  let p1: null | { budget: number; rate: number; supplements: SupplementRow[]; tests: TestRow[]; margin: MarginRow } = null;
+  // Protocol I: tests, budget and margin.
+  let p1: null | { budget: number; tests: TestRow[]; margin: MarginRow } = null;
   if (current?.program_code === 'P1') {
-    const [{ data: prog }, { data: supp }, { data: tst }, { data: m }] = await Promise.all([
-      supabase.from('program').select('supplement_budget, wholesale_rate').eq('code', 'P1').single(),
-      supabase.from('supplement_log')
-        .select('id, item, retail_price, wholesale_cost, given_on, size, unit_form, packages, daily_dose, run_out_date, refill_status, staff_user:given_by(name)')
-        .eq('enrollment_id', current.enrollment_id).order('given_on', { ascending: false }),
+    const [{ data: prog }, { data: tst }, { data: m }] = await Promise.all([
+      supabase.from('program').select('supplement_budget').eq('code', 'P1').single(),
       supabase.from('test_cost_log').select('id, test_name, cost, logged_on')
         .eq('enrollment_id', current.enrollment_id).order('logged_on', { ascending: false }),
       supabase.from('v_p1_margin')
@@ -127,15 +126,35 @@ export default async function PatientPage({
     ]);
     p1 = {
       budget: Number(prog?.supplement_budget ?? 0),
-      rate: Number(prog?.wholesale_rate ?? 0.5),
-      supplements: (supp ?? []).map((r) => ({
-        ...r,
-        given_by_name: (r.staff_user as unknown as { name: string } | null)?.name ?? null,
-      })) as SupplementRow[],
       tests: (tst ?? []) as TestRow[],
       margin: (m ?? { fee: current.amount_paid, consult_cost: 0, staff_time_cost: 0, test_costs: 0, supplement_cost: 0, margin: 0, test_budget: null }) as MarginRow,
     };
   }
+
+  // Supplements: every patient, whatever program they're in. New ones count against the
+  // Protocol I budget only while Protocol I is open.
+  const openP1 = enrollments.find((e) => e.program_code === 'P1' && (e.status === 'active' || e.status === 'paused'));
+  const [{ data: supp }, { data: choiceRows }, { data: p1Prog }, { data: p1Margin }] = await Promise.all([
+    supabase.from('supplement_log')
+      .select('id, item, retail_price, wholesale_cost, given_on, size, unit_form, packages, daily_dose, run_out_date, refill_status, enrollment_id, staff_user:given_by(name), enrollment(program(code))')
+      .eq('patient_id', id).order('given_on', { ascending: false }).order('created_at', { ascending: false }),
+    supabase.from('v_supplement_choices').select('size_id, product_name, size_name, retail_price, size, unit_form, sort')
+      .order('product_name').order('sort'),
+    openP1 ? supabase.from('program').select('supplement_budget, wholesale_rate').eq('code', 'P1').single() : Promise.resolve({ data: null }),
+    openP1 ? supabase.from('v_p1_margin').select('supplement_cost').eq('enrollment_id', openP1.enrollment_id).maybeSingle() : Promise.resolve({ data: null }),
+  ]);
+  const supplements = (supp ?? []).map((r) => ({
+    ...r,
+    given_by_name: (r.staff_user as unknown as { name: string } | null)?.name ?? null,
+    counts_toward_p1: (r.enrollment as unknown as { program: { code: string } } | null)?.program?.code === 'P1',
+  })) as SupplementRow[];
+  const choices: SupplementChoice[] = (choiceRows ?? []).map((c) => ({
+    size_id: c.size_id, label: choiceLabel(c.product_name, c.size_name),
+    retail_price: c.retail_price == null ? null : Number(c.retail_price), size: c.size, unit_form: c.unit_form,
+  }));
+  const supplementBudget = openP1 && p1Prog
+    ? { left: Number(p1Prog.supplement_budget ?? 0) - Number(p1Margin?.supplement_cost ?? 0), rate: Number(p1Prog.wholesale_rate ?? 0.5) }
+    : null;
 
   const openOnes = enrollments.filter((e) => e.status === 'active' || e.status === 'paused');
   const hasOpenProgram = openOnes.length > 0;
@@ -146,6 +165,10 @@ export default async function PatientPage({
   for (const s of steps) stages.set(s.stage_name, [...(stages.get(s.stage_name) ?? []), s]);
   const doneCount = steps.filter((s) => s.status === 'done' || s.status === 'skipped').length;
   const today = todayInNewYork();
+  const supplementsPanel = (
+    <SupplementsPanel patientId={id} today={today} isAdmin={staff?.role === 'admin'} rows={supplements} choices={choices}
+      p1={supplementBudget} squareConnected={!!process.env.SQUARE_ACCESS_TOKEN} />
+  );
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -180,7 +203,10 @@ export default async function PatientPage({
       </div>
 
       {!current ? (
-        <p className="rounded border border-line bg-white p-6 text-muted">Not enrolled in a program.</p>
+        <>
+          <p className="mb-5 rounded border border-line bg-white p-6 text-muted">Not enrolled in a program.</p>
+          {supplementsPanel}
+        </>
       ) : (
         <>
           <section className="mb-5 grid grid-cols-2 gap-px overflow-hidden rounded border border-line bg-line text-sm sm:grid-cols-4">
@@ -207,8 +233,10 @@ export default async function PatientPage({
 
           {p1 && (
             <P1Panel enrollmentId={current.enrollment_id} patientId={id} today={today} isAdmin={staff?.role === 'admin'}
-              budget={p1.budget} rate={p1.rate} supplements={p1.supplements} tests={p1.tests} margin={p1.margin} />
+              budget={p1.budget} tests={p1.tests} margin={p1.margin} />
           )}
+
+          {supplementsPanel}
 
           {upgrade && p2 && (
             <UpgradeBox enrollmentId={current.enrollment_id} patientId={id} credit={Number(current.amount_paid)}
