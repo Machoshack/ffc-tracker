@@ -669,5 +669,79 @@ console.log('\nReading the Square catalog');
   check('Pick list label drops "Regular"', choiceLabel('Custom blend', 'Regular') === 'Custom blend' && choiceLabel('Vitamin D', '60 caps') === 'Vitamin D, 60 caps');
 }
 
+// ---------------------------------------------------------------------------
+console.log('\nResources: guides and links');
+{
+  const db = await freshDb({ seed: true });
+  const admin = (await one(db, `select id from staff_user where name = 'Admin Tester'`)).id;
+  const staff = (await one(db, `select id from staff_user where name = 'Front Desk Tester'`)).id;
+  const adminLogin = '11111111-1111-1111-1111-111111111111';
+  const staffLogin = '22222222-2222-2222-2222-222222222222';
+  const strangerLogin = '33333333-3333-3333-3333-333333333333';
+  await db.query(`update staff_user set auth_user_id = $1 where id = $2`, [adminLogin, admin]);
+  await db.query(`update staff_user set auth_user_id = $1 where id = $2`, [staffLogin, staff]);
+  const as = async (login, fn) => {
+    await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub', '${login}', false);`);
+    try { return await fn(); } finally { await db.exec(`reset role; select set_config('request.jwt.claim.sub', '', false);`); }
+  };
+  const fhe = (await one(db, `select id from program where code = 'FHE'`)).id;
+
+  const links = await as(staffLogin, () => rows(db, `select p.code, l.label from program_link l join program p on p.id = l.program_id order by p.code, l.sort`));
+  check('Staff can see the starting links (FHE scoring matrix, bloodwork slip, Two-Step next step form)',
+        links.map((l) => `${l.code} ${l.label}`).join('|') === 'FHE FHE scoring matrix|FHE Bloodwork slip|TS Next step form', `(got ${links.map((l) => l.label).join()})`);
+  const hidden = await as(strangerLogin, () => rows(db, `select id from program_link`));
+  check('Someone not on the staff list sees no links', hidden.length === 0);
+
+  let err = '';
+  try { await as(staffLogin, () => db.query(`insert into program_guide (program_id, body) values ($1, 'x')`, [fhe])); } catch (e) { err = e.message; }
+  check('Staff cannot write a guide', /row-level security/.test(err), `(got: ${err})`);
+  await as(adminLogin, () => db.query(`insert into program_guide (program_id, body) values ($1, '# Session 1')
+                                      on conflict (program_id) do update set body = excluded.body`, [fhe]));
+  await as(adminLogin, () => db.query(`insert into program_guide (program_id, body) values ($1, '# Session 1\n- Bloodwork slip')
+                                      on conflict (program_id) do update set body = excluded.body`, [fhe]));
+  const g = await as(staffLogin, () => one(db, `select body, updated_by from program_guide where program_id = $1`, [fhe]));
+  check('Admin can save and update a guide; staff can read it; it records who saved it', g.body.includes('Bloodwork slip') && g.updated_by === admin);
+  const audited = await one(db, `select count(*)::int as n from audit_log where record_type = 'program_guide'`);
+  check('Guide changes are in the audit log', audited.n === 2);
+
+  try { err = ''; await as(adminLogin, () => db.query(`insert into program_link (program_id, label, url) values ($1, 'Bad', 'http://x.com')`, [fhe])); } catch (e) { err = e.message; }
+  check('Links must start with https://', /check constraint/.test(err), `(got: ${err})`);
+  const del = await as(staffLogin, () => db.query(`delete from program_link returning id`));
+  check('Staff cannot remove links', del.rows.length === 0);
+
+  await db.exec(read('supabase/migrations/0014_resources.sql'));
+  const again = await one(db, `select count(*)::int as n from program_link`);
+  check('Running the update twice does not duplicate the links', again.n === 3);
+}
+
+console.log('\nGuide formatting');
+{
+  const { parseGuide, inlineText } = await import('../lib/markdown.ts');
+  const b = parseGuide(`# Session 1
+
+Staff do this **first**, then see [the form](https://form.jotform.com/1).
+
+- Bloodwork slip
+- OmegaQuant
+  - in office
+1. Body composition
+2. Grip strength
+- [ ] Packet scanned
+- [x] Cover sheet
+
+---
+## Session 1
+<script>alert(1)</script>`);
+  check('Headings, paragraph, lists, checklist and divider are read', b.map((x) => x.t).join() === 'h,p,ul,ol,ul,hr,h,p', `(got ${b.map((x) => x.t).join()})`);
+  check('Repeated headings get separate anchors', b[0].id === 'session-1' && b[6].id === 'session-1-2');
+  check('Bold and links are recognized', b[1].c.some((x) => x.t === 'bold') && b[1].c.some((x) => x.t === 'link' && x.href === 'https://form.jotform.com/1'));
+  check('Indented bullet becomes a sub-point', b[2].items[1].sub.length === 1);
+  check('Checklist items keep their ticked state', b[4].items[0].check === false && b[4].items[1].check === true);
+  check('HTML is shown as text, never run', b[7].c.length === 1 && b[7].c[0].t === 'text' && b[7].c[0].v.includes('<script>'));
+  const bad = parseGuide('[click](javascript:alert(1))');
+  check('Only https, mailto and in-app links become links', !bad[0].c.some((x) => x.t === 'link'));
+  check('Heading text for the contents list', inlineText(b[0].c) === 'Session 1');
+}
+
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed ? 1 : 0);

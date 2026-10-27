@@ -7,7 +7,7 @@ const NAV = [
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/queue', label: 'Queue' },
   { href: '/patients', label: 'Patients' },
-  { href: '/margin', label: 'P1 Margin' },
+  { href: '/resources', label: 'Resources' },
   // Devices comes later. Settings shows for admins only.
 ];
 

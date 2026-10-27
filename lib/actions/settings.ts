@@ -113,7 +113,7 @@ export async function updateProgram(code: string, _prev: SettingsState, form: Fo
   if (error) return { error: friendly(error.message) };
   if (!data?.length) return { error: 'Nothing was changed.' };
   revalidatePath('/settings/programs');
-  revalidatePath('/margin');
+  revalidatePath('/resources/P1/margin');
   return { ok: Date.now(), message: 'Saved.' };
 }
 

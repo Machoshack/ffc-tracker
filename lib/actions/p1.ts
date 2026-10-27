@@ -12,7 +12,7 @@ const UNIT_FORMS = ['capsules', 'softgels', 'tablets', 'scoops', 'mL', 'drops', 
 
 function refresh(patientId: string) {
   revalidatePath(`/patients/${patientId}`);
-  revalidatePath('/margin');
+  revalidatePath('/resources/P1/margin');
   revalidatePath('/queue');
 }
 

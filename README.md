@@ -24,12 +24,14 @@ See `BACKLOG.md` for decisions made but not built yet.
 - `supabase/migrations/0010_fhe_sessions.sql`: FHE Visit 1 and 2 renamed Session 1 and 2
 - `supabase/migrations/0011_followups.sql`: Lab and Functional test follow-ups, optional steps, follow-ups may overlap Protocol II
 - `supabase/migrations/0012_supplement_supply.sql`: supplement size, form, bottles, dose, run-out date, refill reminders
+- `supabase/migrations/0014_resources.sql`: Resources tab: execution guides and links per program
 - `supabase/migrations/0013_supplements_all_patients.sql`: supplements for every patient (P1 budget only while P1 is open), supplement list from Square
 - `supabase/seed.sql`: fake patients and staff only
 - `supabase/remove-demo-data.sql`: removes the fake patients and deactivates the fake staff (run once in the SQL Editor)
 - `supabase/remove-demo-staff.sql`: deletes the fake staff accounts; real staff (with an email) are kept
 - `lib/square.ts`: reads products from Square (read only)
-- `tests/run-tests.mjs`: 145 checks run against a throwaway database
+- `public/tools/fhe-cover-sheet.html`: the FHE cover sheet generator, shown under Resources, FHE (login required; nothing typed into it is saved)
+- `tests/run-tests.mjs`: 162 checks run against a throwaway database
 
 ## Run locally
 
